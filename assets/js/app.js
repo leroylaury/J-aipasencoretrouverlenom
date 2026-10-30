@@ -341,38 +341,39 @@ async function submitOrder(type) {
     toast(type==='achat'?'Achat confirmé : stock mis à jour.':'Prévision de vente créée. Le stock reste inchangé.');
   } catch(e) { toast(e.message || 'Erreur serveur', true); }
 }
-function openItemForm() {
-  openModal('Nouvel article','CATALOGUE PRODUITS',`
+function openItemForm(item = null) {
+  const isEdit = !!item;
+  openModal(isEdit ? 'Modifier l\'article' : 'Nouvel article','CATALOGUE PRODUITS',`
     <form id="itemForm">
       <div class="form-grid">
-        <div class="field full"><label for="itemName">NOM DE L'ARTICLE</label><input id="itemName" placeholder="Ex. : Lingot d'Or" required></div>
-        <div class="field"><label for="itemCategory">CATÉGORIE</label><select id="itemCategory">${state.categories.map(c => `<option>${escapeHtml(c)}</option>`).join('')}</select></div>
-        <div class="field"><label for="itemGlyph">SYMBOLE (2 LETTRES)</label><input id="itemGlyph" maxlength="2" placeholder="Ex. : AU" required></div>
-        <div class="field"><label for="itemBuy">PRIX D'ACHAT INITIAL</label><input id="itemBuy" type="number" step="0.01" value="0"></div>
-        <div class="field"><label for="itemSale">PRIX DE VENTE INITIAL</label><input id="itemSale" type="number" step="0.01" value="0"></div>
+        <div class="field full"><label for="itemName">NOM DE L'ARTICLE</label><input id="itemName" placeholder="Ex. : Lingot d'Or" required value="${isEdit ? escapeHtml(item.name) : ''}"></div>
+        <div class="field"><label for="itemCategory">CATÉGORIE</label><select id="itemCategory">${state.categories.map(c => `<option ${isEdit && item.category === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select></div>
+        <div class="field"><label for="itemGlyph">SYMBOLE (2 LETTRES)</label><input id="itemGlyph" maxlength="2" placeholder="Ex. : AU" required value="${isEdit ? escapeHtml(item.glyph) : ''}"></div>
+        <div class="field"><label for="itemBuy">PRIX D'ACHAT INITIAL</label><input id="itemBuy" type="number" step="0.01" value="${isEdit ? item.buy : 0}"></div>
+        <div class="field"><label for="itemSale">PRIX DE VENTE INITIAL</label><input id="itemSale" type="number" step="0.01" value="${isEdit ? item.sale : 0}"></div>
         <div class="field full">
           <label>IMAGE DE L'ARTICLE</label>
           <div style="display:flex;gap:12px;align-items:center">
-            <div class="img-field-preview" id="itemImgPreview"><span>?</span></div>
+            <div class="img-field-preview" id="itemImgPreview">${isEdit && item.image ? `<img src="${escapeHtml(item.image)}">` : '<span>?</span>'}</div>
             <input id="itemImageFile" type="file" accept="image/*" style="font-size:11px;color:#6e767e">
           </div>
         </div>
         <div class="field full">
           <label>FISCALITÉ (ACHAT)</label>
           <div style="display:flex;gap:16px;align-items:center;margin-top:8px">
-            <label style="color:#cbd2d2"><input id="itemTaxable" type="checkbox"> Déductible des impôts</label>
-            <div id="taxRateWrap" style="display:none;align-items:center;gap:8px">
+            <label style="color:#cbd2d2"><input id="itemTaxable" type="checkbox" ${isEdit && item.taxDeductible ? 'checked' : ''}> Déductible des impôts</label>
+            <div id="taxRateWrap" style="display:${isEdit && item.taxDeductible ? 'flex' : 'none'};align-items:center;gap:8px">
               <span style="color:#6e767e">Taux :</span>
-              <input id="itemTaxRate" type="number" step="0.1" value="20" style="width:70px"> <span style="color:#6e767e">%</span>
+              <input id="itemTaxRate" type="number" step="0.1" value="${isEdit ? item.taxRate : 20}" style="width:70px"> <span style="color:#6e767e">%</span>
             </div>
           </div>
         </div>
       </div>
-      <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelItem">Annuler</button><button class="btn btn-primary" type="submit">Créer l'article</button></div>
+      <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelItem">Annuler</button><button class="btn btn-primary" type="submit">${isEdit ? 'Enregistrer les modifications' : 'Créer l\'article'}</button></div>
     </form>`);
   document.getElementById('cancelItem').onclick=closeModal;
 
-  let imageData = null;
+  let imageData = isEdit ? item.image : null;
   let imageFile = null;
   document.getElementById('itemImageFile').onchange = e => {
     const file = e.target.files[0];
@@ -392,20 +393,27 @@ function openItemForm() {
   taxable.onchange = () => document.getElementById('taxRateWrap').style.display = taxable.checked ? 'flex' : 'none';
   document.getElementById('itemForm').onsubmit = async e => {
     e.preventDefault();
-    const newItem = {
-      id: 'it-' + uid().slice(0,8),
+    const itemData = {
       name: document.getElementById('itemName').value.trim(),
       category: document.getElementById('itemCategory').value,
       glyph: document.getElementById('itemGlyph').value.toUpperCase(),
-      stock: 0,
       buy: Number(document.getElementById('itemBuy').value),
       sale: Number(document.getElementById('itemSale').value),
-      image: imageData,
       taxDeductible: taxable.checked,
       taxRate: taxable.checked ? Number(document.getElementById('itemTaxRate').value) : 0
     };
-    try { await api.createItem(newItem, state.categoryRows.find(c=>c.name===newItem.category)?.id, imageFile); await refresh(); closeModal(); toast('Article ajouté au catalogue.'); }
-    catch(err) { toast(err.message||'Erreur serveur',true); }
+    try {
+      const catId = state.categoryRows.find(c=>c.name===itemData.category)?.id;
+      if (isEdit) {
+        await api.updateItem(item.id, itemData, catId, imageFile);
+        toast('Article mis à jour.');
+      } else {
+        await api.createItem(itemData, catId, imageFile);
+        toast('Article ajouté au catalogue.');
+      }
+      await refresh();
+      closeModal();
+    } catch(err) { toast(err.message||'Erreur serveur',true); }
   };
 }
 function openPartnerForm() {
@@ -454,12 +462,28 @@ function openPartnerForm() {
 }
 
 function openCategoryForm() {
-  openModal('Nouvelle catégorie', 'CATALOGUE PRODUITS', `
+  const canManage = api.can('catalog.manage');
+  const catList = state.categoryRows.length ? `
+    <div class="line-builder" style="margin-top:20px">
+      <div class="line-builder-head"><strong>Catégories existantes</strong></div>
+      <div class="line-list" style="max-height:200px;overflow-y:auto">
+        ${state.categoryRows.map(c => `
+          <div class="order-line" style="justify-content:space-between;padding:8px">
+            <span>${escapeHtml(c.name)}</span>
+            ${canManage ? `<button type="button" class="remove-line delete-cat" data-id="${c.id}" aria-label="Supprimer">×</button>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    </div>` : '';
+
+  openModal('Gérer les catégories', 'CATALOGUE PRODUITS', `
     <form id="categoryForm">
-      <div class="field full"><label for="catName">NOM DE LA CATÉGORIE</label><input id="catName" placeholder="Ex. : Électronique" required></div>
+      <div class="field full"><label for="catName">NOM DE LA NOUVELLE CATÉGORIE</label><input id="catName" placeholder="Ex. : Électronique" required></div>
       <p class="page-footnote">La catégorie sera immédiatement disponible pour les nouveaux articles.</p>
       <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelCat">Annuler</button><button class="btn btn-primary" type="submit">Créer la catégorie</button></div>
-    </form>`);
+    </form>
+    ${catList}
+  `);
   document.getElementById('cancelCat').onclick = closeModal;
   document.getElementById('categoryForm').onsubmit = async e => {
     e.preventDefault();
@@ -468,6 +492,16 @@ function openCategoryForm() {
     try { await api.createCategory(name); await refresh(); closeModal(); toast('Catégorie ajoutée.'); }
     catch(err) { toast(err.message||'Erreur serveur',true); }
   };
+  document.querySelectorAll('.delete-cat').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      const cat = state.categoryRows.find(c => c.id == id);
+      if (confirm(`Supprimer la catégorie "${cat.name}" ?\nAttention : cela peut échouer si des articles y sont rattachés.`)) {
+        try { await api.deleteCategory(id); await refresh(); closeModal(); toast('Catégorie supprimée.'); }
+        catch(e) { toast(e.message || 'Erreur : vérifiez si des articles utilisent cette catégorie', true); }
+      }
+    };
+  });
 }
 function openOrderDetails(id) {
   const order=state.orders.find(o=>o.id===id); if(!order)return;
@@ -520,7 +554,39 @@ function openTreasuryForm() {
 }
 
 document.addEventListener('click',e=>{
-  const itemBtn=e.target.closest('[data-item-action]');if(itemBtn){const item=itemFor(itemBtn.dataset.itemAction);if(!item)return;openModal(item.name,'ACTION SUR LE STOCK',`<div class="detail-box"><small>STOCK DISPONIBLE</small><strong>${intFmt.format(item.stock)} unités</strong></div><div class="modal-actions"><button class="btn btn-secondary" id="itemBuy">Enregistrer un achat</button><button class="btn btn-primary" id="itemSell">Créer une vente</button></div>`);document.getElementById('itemBuy').onclick=()=>openOrderForm('achat');document.getElementById('itemSell').onclick=()=>openOrderForm('vente');return;}
+  const itemBtn=e.target.closest('[data-item-action]');
+  if(itemBtn){
+    const item=itemFor(itemBtn.dataset.itemAction);
+    if(!item)return;
+    const canManage = api.can("catalog.manage");
+    openModal(item.name,'ACTION SUR LE STOCK',`
+      <div class="detail-box"><small>STOCK DISPONIBLE</small><strong>${intFmt.format(item.stock)} unités</strong></div>
+      <div class="modal-actions-grid">
+        <button class="btn btn-secondary" id="itemBuy">Enregistrer un achat</button>
+        <button class="btn btn-primary" id="itemSell">Créer une vente</button>
+        ${canManage ? `
+          <button class="btn btn-ghost" id="itemEdit">Modifier l'article</button>
+          <button class="btn btn-danger" id="itemDelete">Supprimer l'article</button>
+        ` : ''}
+      </div>`);
+    document.getElementById('itemBuy').onclick=()=>openOrderForm('achat');
+    document.getElementById('itemSell').onclick=()=>openOrderForm('vente');
+    if (canManage) {
+      document.getElementById('itemEdit').onclick=()=>openItemForm(item);
+      document.getElementById('itemDelete').onclick=async ()=>{
+        if(confirm(`Supprimer définitivement "${item.name}" ?`)) {
+          try {
+            const res = await api.deleteItem(item.id);
+            await refresh();
+            closeModal();
+            toast(res === 'archived' ? 'Article archivé (utilisé dans l\'historique).' : 'Article supprimé.');
+          }
+          catch(e) { toast(e.message||'Erreur serveur', true); }
+        }
+      };
+    }
+    return;
+  }
   const orderBtn=e.target.closest('[data-order]');if(orderBtn)openOrderDetails(orderBtn.dataset.order);
 });
 ['stockSearch','categoryFilter'].forEach(id=>document.getElementById(id)?.addEventListener(id==='stockSearch'?'input':'change',renderStock));

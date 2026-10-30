@@ -125,6 +125,37 @@ export async function createItem(i, categoryId, file) {
   await run(supabase.from("item_costs").insert({
     item_id: id, last_buy_price: i.buy, tax_deductible: i.taxDeductible, deduction_rate: i.taxDeductible ? i.taxRate : null }));
 }
+export async function updateItem(id, i, categoryId, file) {
+  if (!categoryId) throw new Error("Catégorie introuvable");
+  const updateData = { category_id: categoryId, name: i.name, last_sale_price: i.sale };
+  if (file) {
+    updateData.image_path = await uploadImage("items", file);
+  }
+  try {
+    const { data: old } = await supabase.from("items").select("image_path").eq("id", id).single();
+    await run(supabase.from("items").update(updateData).eq("id", id));
+    if (file && old?.image_path) dropImage(old.image_path);
+  } catch (e) { if (updateData.image_path) dropImage(updateData.image_path); throw e; }
+
+  await run(supabase.from("item_costs").update({
+    last_buy_price: i.buy, tax_deductible: i.taxDeductible, deduction_rate: i.taxDeductible ? i.taxRate : null
+  }).eq("item_id", id));
+}
+
+export async function deleteItem(id) {
+  const { error } = await supabase.from("items").delete().eq("id", id);
+  if (error?.code === "23503") {             // article utilisé dans l'historique
+    await run(supabase.from("items").update({ archived: true }).eq("id", id));
+    return "archived";
+  }
+  if (error) throw error;
+
+  // Si suppression réussie, on nettoie l'image
+  const { data: item } = await supabase.from("items").select("image_path").eq("id", id).maybeSingle();
+  if (item?.image_path) dropImage(item.image_path);
+  return "deleted";
+}
+export const deleteCategory = id => run(supabase.from("categories").delete().eq("id", id));
 
 // --- Trésorerie
 export const setOpeningCash = amount => rpc("set_opening_cash", { p_amount: amount });
