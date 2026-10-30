@@ -1,6 +1,9 @@
 'use strict';
 
 const eur = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
+const sCurrency = (val) => {
+  return intFmt.format(val) + ' s';
+};
 const intFmt = new Intl.NumberFormat('fr-FR');
 const today = new Date('2026-10-30T13:00:00');
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxx-xxxx-4xxx-yxxx-xxxxxxxx'.replace(/[xy]/g, c => (Math.random() * 16 | 0).toString(16)));
@@ -18,6 +21,7 @@ const state = {
     { id: 'it-cement', name: 'Ciment', category: 'Matériaux', stock: 45, buy: 60, sale: 95, glyph: 'CI', image: null, taxDeductible: true, taxRate: 5.5 },
     { id: 'it-wood', name: 'Bois traité', category: 'Matériaux', stock: 26, buy: 90, sale: 140, glyph: 'BT', image: null, taxDeductible: false, taxRate: 0 }
   ],
+  categories: ['Métaux', 'Matériaux', 'Énergie', 'Divers'],
   partners: [
     { id: 'p-nord', name: 'Nord Métaux', supplier: true, client: false, note: 'Fournisseur principal · Secteur nord', image: null },
     { id: 'p-industries', name: 'Industries Martin', supplier: true, client: true, note: 'Compte professionnel', image: null },
@@ -83,36 +87,63 @@ document.addEventListener('click', e => {
 
 function statusBadge(status) {
   const labels = { confirme:'Confirmé', prevision:'En prévision', annule:'Annulé' };
-  return `<span class="status ${status}">${labels[status]}</span>`;
+  return `<span class="status ${status}"><span class="desktop-only">${labels[status]}</span><span class="mobile-only status-dot ${status}" title="${labels[status]}"></span></span>`;
 }
-function typeChip(type) { return `<span class="type-chip ${type}">${type === 'achat' ? 'ACHAT' : 'VENTE'}</span>`; }
-function partnerName(name) { return escapeHtml(name || 'Partenaire non renseigné'); }
+function typeChip(type) {
+  const label = type === 'achat' ? 'ACHAT' : 'VENTE';
+  const letter = type === 'achat' ? 'A' : 'V';
+  return `<span class="type-chip ${type} desktop-only">${label}</span><span class="mobile-type-indicator ${type}" title="${label}">${letter}</span>`;
+}
+function partnerName(name) {
+  const escaped = escapeHtml(name || 'Partenaire non renseigné');
+  const short = name ? (name.length > 8 ? name.substring(0, 7) + '…' : name) : '…';
+  return `<span class="desktop-only">${escaped}</span><span class="mobile-only" title="${escaped}">${escapeHtml(short)}</span>`;
+}
 function renderDashboard() {
   const stockUnits = state.items.reduce((sum,x) => sum + x.stock, 0);
   const stockValue = state.items.reduce((sum,x) => sum + x.stock * x.buy, 0);
   const pending = state.orders.filter(o => o.status === 'prevision').length;
-  document.getElementById('cashMetric').textContent = eur.format(state.cash);
-  document.getElementById('stockValueMetric').textContent = eur.format(stockValue);
+  document.getElementById('cashMetric').textContent = sCurrency(state.cash);
+  document.getElementById('stockValueMetric').textContent = sCurrency(stockValue);
   document.getElementById('stockUnitsMetric').textContent = `${intFmt.format(stockUnits)} unités`;
   document.getElementById('pendingMetric').textContent = intFmt.format(pending);
   document.getElementById('movementMetric').textContent = intFmt.format(state.orders.length);
   document.getElementById('navStockCount').textContent = String(state.items.length).padStart(2,'0');
-  document.getElementById('recentRows').innerHTML = [...state.orders].sort((a,b) => new Date(b.date)-new Date(a.date)).slice(0,5).map(order => `<tr><td><div class="reference-cell"><span class="item-symbol">${order.type==='achat'?'↓':'↑'}</span><span><span class="cell-title">${escapeHtml(order.ref)}</span><span class="cell-sub">${order.lines.length} ligne(s)</span></span></div></td><td>${partnerName(order.partner)}</td><td>${fmtDate(order.date)}</td><td>${statusBadge(order.status)}</td><td class="align-right">${eur.format(orderTotal(order))}</td></tr>`).join('');
+  document.getElementById('recentRows').innerHTML = [...state.orders].sort((a,b) => new Date(b.date)-new Date(a.date)).slice(0,5).map(order => `<tr><td><div class="reference-cell"><span class="item-symbol">${order.type==='achat'?'↓':'↑'}</span><span><span class="cell-title">${escapeHtml(order.ref)}</span><span class="cell-sub">${order.lines.length} ligne(s)</span></span></div></td><td>${partnerName(order.partner)}</td><td class="mobile-hide">${fmtDate(order.date)}</td><td class="desktop-only">${statusBadge(order.status)}</td><td class="align-right"><strong>${sCurrency(orderTotal(order))}</strong></td></tr>`).join('');
 }
 function renderStock() {
   const query = (document.getElementById('stockSearch')?.value || '').trim().toLowerCase();
   const category = document.getElementById('categoryFilter')?.value || 'all';
   const filtered = state.items.filter(x => (x.name.toLowerCase().includes(query) || x.category.toLowerCase().includes(query)) && (category === 'all' || x.category === category));
   const stockUnits = state.items.reduce((sum,x) => sum+x.stock,0);
+
+  const catFilter = document.getElementById('categoryFilter');
+  if (catFilter) {
+    const currentVal = catFilter.value;
+    catFilter.innerHTML = `<option value="all">Toutes les catégories</option>${state.categories.map(c => `<option value="${escapeHtml(c)}"${c === currentVal ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}`;
+  }
+
   document.getElementById('itemCount').textContent = String(state.items.length).padStart(2,'0');
   document.getElementById('stockUnitsSummary').textContent = intFmt.format(stockUnits);
   document.getElementById('stockResultCount').textContent = `${filtered.length} ARTICLE${filtered.length>1?'S':''}`;
-  document.getElementById('stockRows').innerHTML = filtered.length ? filtered.map(x => `<tr><td><div class="item-cell"><span class="item-symbol">${x.image ? `<img src="${escapeHtml(x.image)}" alt="">` : escapeHtml(x.glyph)}</span><span><span class="cell-title">${escapeHtml(x.name)}</span><span class="cell-sub">Réf. ${escapeHtml(x.id.toUpperCase())}</span></span></div></td><td>${escapeHtml(x.category)}</td><td><strong>${intFmt.format(x.stock)}</strong> <span class="cell-sub">unités</span></td><td>${eur.format(x.buy)}</td><td>${eur.format(x.sale)}</td><td><button class="row-action" data-item-action="${x.id}">Opérer</button></td></tr>`).join('') : `<tr><td colspan="6"><div class="empty-state">Aucun article ne correspond à votre recherche.</div></td></tr>`;
+  document.getElementById('stockRows').innerHTML = filtered.length ? filtered.map(x => `<tr><td><div class="item-cell"><span class="item-symbol">${x.image ? `<img src="${escapeHtml(x.image)}" alt="">` : escapeHtml(x.glyph)}</span><span><span class="cell-title">${escapeHtml(x.name)}</span><span class="cell-sub mobile-hide">Réf. ${escapeHtml(x.id.toUpperCase())}</span></span></div></td><td class="mobile-hide">${escapeHtml(x.category)}</td><td class="align-right"><strong>${intFmt.format(x.stock)}</strong> <span class="cell-sub">unités</span></td><td class="align-right desktop-only">${sCurrency(x.buy)}</td><td class="align-right desktop-only">${sCurrency(x.sale)}</td><td><button class="row-action" data-item-action="${x.id}">Opérer</button></td></tr>`).join('') : `<tr><td colspan="6"><div class="empty-state">Aucun article ne correspond à votre recherche.</div></td></tr>`;
 }
 function renderOperations() {
   const filter = document.getElementById('operationFilter')?.value || 'all';
   const rows = [...state.orders].filter(o => filter === 'all' || o.status === filter).sort((a,b)=>new Date(b.date)-new Date(a.date));
-  document.getElementById('operationRows').innerHTML = rows.map(o => `<tr><td><span class="cell-title">${escapeHtml(o.ref)}</span></td><td>${typeChip(o.type)}</td><td>${partnerName(o.partner)}</td><td>${fmtDate(o.date)}</td><td>${statusBadge(o.status)}</td><td class="align-right">${eur.format(orderTotal(o))}</td><td><button class="row-action" data-order="${o.id}">Détails</button></td></tr>`).join('') || `<tr><td colspan="7"><div class="empty-state">Aucune opération.</div></td></tr>`;
+  document.getElementById('operationRows').innerHTML = rows.map(o => `<tr><td><span class="cell-title">${escapeHtml(o.ref)}</span></td><td>${typeChip(o.type)}</td><td>${partnerName(o.partner)}</td><td class="mobile-hide">${fmtDate(o.date)}</td><td class="mobile-show-compressed">${statusBadge(o.status)}</td><td class="align-right"><strong>${sCurrency(orderTotal(o))}</strong></td><td><button class="row-action" data-order="${o.id}">Détails</button></td></tr>`).join('') || `<tr><td colspan="7"><div class="empty-state">Aucune opération.</div></td></tr>`;
+
+  document.querySelectorAll('.row-action[data-order]').forEach(btn => {
+    btn.onclick = () => {
+      showPage('history');
+      const row = document.querySelector(`.history-row[data-id="${btn.dataset.order}"]`);
+      if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const expandBtn = row.querySelector('.expand-btn');
+        if (expandBtn && expandBtn.textContent === '＋') expandBtn.click();
+      }
+    };
+  });
 }
 function renderPartners() {
   const query = (document.getElementById('partnerSearch')?.value || '').toLowerCase();
@@ -125,16 +156,71 @@ function renderHistory() {
   const type = document.getElementById('historyType')?.value || 'all';
   const status = document.getElementById('historyStatus')?.value || 'all';
   const rows = [...state.orders].filter(o => (type==='all'||o.type===type) && (status==='all'||o.status===status) && (`${o.ref} ${o.partner} ${o.lines.map(l=>itemFor(l.itemId)?.name).join(' ')}`.toLowerCase().includes(query))).sort((a,b)=>new Date(b.date)-new Date(a.date));
-  document.getElementById('historyRows').innerHTML = rows.map(o => `<tr><td><span class="cell-title">${escapeHtml(o.ref)}</span></td><td>${typeChip(o.type)}</td><td>${partnerName(o.partner)}</td><td>${escapeHtml(o.createdBy)}</td><td>${fmtDate(o.date)}</td><td>${statusBadge(o.status)}</td><td class="align-right">${eur.format(orderTotal(o))}</td></tr>`).join('') || `<tr><td colspan="7"><div class="empty-state">Aucune opération ne correspond aux filtres.</div></td></tr>`;
+
+  document.getElementById('historyRows').innerHTML = rows.length ? rows.map(o => `
+    <tr class="history-row" data-id="${o.id}">
+      <td><div style="display:flex;align-items:center;gap:8px"><button class="expand-btn">＋</button><span class="cell-title">${escapeHtml(o.ref)}</span></div></td>
+      <td>${typeChip(o.type)}</td>
+      <td>${partnerName(o.partner)}</td>
+      <td class="desktop-only">${escapeHtml(o.createdBy)}</td>
+      <td class="mobile-small-date">${fmtDate(o.date)}</td>
+      <td>${statusBadge(o.status)}</td>
+      <td class="align-right"><strong>${sCurrency(orderTotal(o))}</strong></td>
+    </tr>
+    <tr class="detail-row" id="detail-${o.id}" style="display:none">
+      <td colspan="7">
+        <div class="detail-content">
+          <table class="detail-table">
+            <thead>
+              <tr>
+                <th style="width: 40%">ARTICLE</th>
+                <th class="align-right" style="width: 15%">QTÉ</th>
+                <th class="align-right mobile-hide" style="width: 20%">PRIX UNIT.</th>
+                <th class="align-right" style="width: 25%">TOTAL</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${o.lines.map(l => {
+                const item = itemFor(l.itemId);
+                return `
+                  <tr>
+                    <td><div class="cell-title">${escapeHtml(item?.name || 'Inconnu')}</div><div class="mobile-only cell-sub">${sCurrency(l.unitPrice)} / unité</div></td>
+                    <td class="align-right"><strong>${intFmt.format(l.quantity)}</strong></td>
+                    <td class="align-right mobile-hide">${sCurrency(l.unitPrice)}</td>
+                    <td class="align-right"><strong>${sCurrency(Math.ceil(l.quantity * l.unitPrice))}</strong></td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </td>
+    </tr>
+  `).join('') : `<tr><td colspan="7"><div class="empty-state">Aucune opération ne correspond aux filtres.</div></td></tr>`;
+
+  bindHistoryEvents();
+}
+function bindHistoryEvents() {
+  document.querySelectorAll('.expand-btn').forEach(btn => {
+    btn.onclick = (e) => {
+      const row = e.target.closest('.history-row');
+      const id = row.dataset.id;
+      const detail = document.getElementById(`detail-${id}`);
+      const isExpanded = detail.style.display !== 'none';
+      detail.style.display = isExpanded ? 'none' : 'table-row';
+      e.target.textContent = isExpanded ? '＋' : '－';
+      row.classList.toggle('expanded', !isExpanded);
+    };
+  });
 }
 function renderFinance() {
   rebuildMovements();
   const incoming = state.movements.filter(m=>m.type==='vente').reduce((a,m)=>a+m.amount,0);
   const outgoing = state.movements.filter(m=>m.type==='achat').reduce((a,m)=>a+m.amount,0);
-  document.getElementById('financeCash').textContent = eur.format(state.cash);
-  document.getElementById('financeIn').textContent = eur.format(incoming);
-  document.getElementById('financeOut').textContent = eur.format(outgoing);
-  document.getElementById('financeRows').innerHTML = [...state.movements].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(m=>`<tr><td><span class="cell-title">${escapeHtml(m.ref)}</span></td><td>${escapeHtml(m.label)}</td><td>${fmtDate(m.date)}</td><td class="align-right ${m.type==='vente'?'positive':'negative'}">${m.type==='vente'?'+':'−'} ${eur.format(m.amount)}</td></tr>`).join('') || `<tr><td colspan="4"><div class="empty-state">Aucun mouvement financier.</div></td></tr>`;
+  document.getElementById('financeCash').textContent = sCurrency(state.cash);
+  document.getElementById('financeIn').textContent = sCurrency(incoming);
+  document.getElementById('financeOut').textContent = sCurrency(outgoing);
+  document.getElementById('financeRows').innerHTML = [...state.movements].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(m=>`<tr><td><span class="cell-title">${escapeHtml(m.ref)}</span></td><td class="mobile-hide">${escapeHtml(m.label)}</td><td class="mobile-hide">${fmtDate(m.date)}</td><td class="align-right ${m.type==='vente'?'positive':'negative'}"><strong>${m.type==='vente'?'+':'−'} ${sCurrency(m.amount)}</strong></td></tr>`).join('') || `<tr><td colspan="4"><div class="empty-state">Aucun mouvement financier.</div></td></tr>`;
 }
 function renderTax() {
   const taxLines = [];
@@ -147,10 +233,10 @@ function renderTax() {
   });
   const totalAchat = state.orders.filter(o => o.type === 'achat' && o.status === 'confirme').reduce((a,o) => a + orderTotal(o), 0);
   const totalDeduction = taxLines.reduce((a,l) => a + (l.amount * l.rate / 100), 0);
-  document.getElementById('taxTotalAchat').textContent = eur.format(totalAchat);
-  document.getElementById('taxTotalDeduction').textContent = eur.format(totalDeduction);
-  document.getElementById('taxNet').textContent = eur.format(totalAchat - totalDeduction);
-  document.getElementById('taxRows').innerHTML = taxLines.sort((a,b)=>new Date(b.date)-new Date(a.date)).map(l => `<tr><td>${fmtDate(l.date)}</td><td><span class="cell-title">${escapeHtml(l.item)}</span></td><td>${eur.format(l.amount)}</td><td><span class="tax-rate">${l.rate}%</span></td><td class="align-right positive">− ${eur.format(l.amount * l.rate / 100)}</td></tr>`).join('') || `<tr><td colspan="5"><div class="empty-state">Aucune déduction fiscale enregistrée.</div></td></tr>`;
+  document.getElementById('taxTotalAchat').textContent = sCurrency(totalAchat);
+  document.getElementById('taxTotalDeduction').textContent = sCurrency(totalDeduction);
+  document.getElementById('taxNet').textContent = sCurrency(totalAchat - totalDeduction);
+  document.getElementById('taxRows').innerHTML = taxLines.sort((a,b)=>new Date(b.date)-new Date(a.date)).map(l => `<tr><td>${fmtDate(l.date)}</td><td><span class="cell-title">${escapeHtml(l.item)}</span></td><td class="align-right mobile-hide">${sCurrency(l.amount)}</td><td class="align-right desktop-only"><span class="tax-rate">${l.rate}%</span></td><td class="align-right positive"><strong>− ${sCurrency(l.amount * l.rate / 100)}</strong></td></tr>`).join('') || `<tr><td colspan="5"><div class="empty-state">Aucune déduction fiscale enregistrée.</div></td></tr>`;
 }
 function renderAll() { renderDashboard(); renderStock(); renderOperations(); renderPartners(); renderHistory(); renderFinance(); renderTax(); }
 
@@ -176,6 +262,7 @@ function openAction(action) {
   if(action==='new-sale') openOrderForm('vente');
   if(action==='new-partner') openPartnerForm();
   if(action==='new-item') openItemForm();
+  if(action==='new-category') openCategoryForm();
 }
 function partnerOptions(type) {
   const candidates = state.partners.filter(p => type==='achat' ? p.supplier : p.client);
@@ -192,8 +279,8 @@ function openOrderForm(type) {
     <form id="orderForm">
       <input type="hidden" id="orderType" value="${type}">
       <div class="form-grid"><div class="field full"><label for="orderPartner">PARTENAIRE</label><select id="orderPartner">${partnerOptions(type)}</select></div><div class="field"><label for="orderDate">DATE DE L'OPÉRATION</label><input id="orderDate" type="date" value="2026-10-30" required></div><div class="field"><label>STATUT INITIAL</label><input value="${isBuy?'Confirmé immédiatement':'En prévision'}" disabled></div></div>
-      <div class="line-builder"><div class="line-builder-head"><strong>Articles du bon</strong><span class="cell-sub">PRIX UNITAIRES EN €</span></div><div class="line-list" id="lineList">${lineMarkup(type)}</div><button type="button" class="add-line" id="addLine">＋ Ajouter une ligne</button></div>
-      <div class="order-total"><span>TOTAL DU BON <small class="cell-sub"> · arrondi supérieur par ligne</small></span><strong id="orderTotalPreview">0,00 €</strong></div>
+      <div class="line-builder"><div class="line-builder-head"><strong>Articles du bon</strong><span class="cell-sub">PRIX UNITAIRES EN s</span></div><div class="line-list" id="lineList">${lineMarkup(type)}</div><button type="button" class="add-line" id="addLine">＋ Ajouter une ligne</button></div>
+      <div class="order-total"><span>TOTAL DU BON <small class="cell-sub"> · arrondi supérieur par ligne</small></span><strong id="orderTotalPreview">0,00 s</strong></div>
       <p class="page-footnote">${isBuy?'Le bon sera confirmé immédiatement, la trésorerie diminuée et les quantités ajoutées au stock.':'La vente sera enregistrée en prévision. Le stock et la trésorerie ne bougeront qu’à la confirmation.'}</p>
       <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelOrder">Annuler</button><button class="btn btn-primary" type="submit">${isBuy?'Confirmer l’achat':'Créer la prévision'}</button></div>
     </form>`);
@@ -214,7 +301,7 @@ function updateOrderTotal() {
   if(!document.getElementById('orderTotalPreview')) return;
   const lines=collectLines();
   const total=lines.reduce((sum,l)=>sum+(Number.isFinite(l.quantity)&&Number.isFinite(l.unitPrice)?Math.ceil(l.quantity*l.unitPrice):0),0);
-  document.getElementById('orderTotalPreview').textContent=eur.format(total);
+  document.getElementById('orderTotalPreview').textContent=sCurrency(total);
 }
 function nextRef(type) {
   const prefix=type==='achat'?'A':'V';
@@ -242,11 +329,17 @@ function openItemForm() {
     <form id="itemForm">
       <div class="form-grid">
         <div class="field full"><label for="itemName">NOM DE L'ARTICLE</label><input id="itemName" placeholder="Ex. : Lingot d'Or" required></div>
-        <div class="field"><label for="itemCategory">CATÉGORIE</label><select id="itemCategory"><option>Métaux</option><option>Matériaux</option><option>Énergie</option><option>Divers</option></select></div>
+        <div class="field"><label for="itemCategory">CATÉGORIE</label><select id="itemCategory">${state.categories.map(c => `<option>${escapeHtml(c)}</option>`).join('')}</select></div>
         <div class="field"><label for="itemGlyph">SYMBOLE (2 LETTRES)</label><input id="itemGlyph" maxlength="2" placeholder="Ex. : AU" required></div>
         <div class="field"><label for="itemBuy">PRIX D'ACHAT INITIAL</label><input id="itemBuy" type="number" step="0.01" value="0"></div>
         <div class="field"><label for="itemSale">PRIX DE VENTE INITIAL</label><input id="itemSale" type="number" step="0.01" value="0"></div>
-        <div class="field full"><label for="itemImage">URL DE L'IMAGE (OPTIONNEL)</label><input id="itemImage" type="url" placeholder="https://..."></div>
+        <div class="field full">
+          <label>IMAGE DE L'ARTICLE</label>
+          <div style="display:flex;gap:12px;align-items:center">
+            <div class="img-field-preview" id="itemImgPreview"><span>?</span></div>
+            <input id="itemImageFile" type="file" accept="image/*" style="font-size:11px;color:#6e767e">
+          </div>
+        </div>
         <div class="field full">
           <label>FISCALITÉ (ACHAT)</label>
           <div style="display:flex;gap:16px;align-items:center;margin-top:8px">
@@ -261,6 +354,20 @@ function openItemForm() {
       <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelItem">Annuler</button><button class="btn btn-primary" type="submit">Créer l'article</button></div>
     </form>`);
   document.getElementById('cancelItem').onclick=closeModal;
+
+  let imageData = null;
+  document.getElementById('itemImageFile').onchange = e => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        imageData = ev.target.result;
+        document.getElementById('itemImgPreview').innerHTML = `<img src="${imageData}">`;
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const taxable = document.getElementById('itemTaxable');
   taxable.onchange = () => document.getElementById('taxRateWrap').style.display = taxable.checked ? 'flex' : 'none';
   document.getElementById('itemForm').onsubmit = e => {
@@ -273,7 +380,7 @@ function openItemForm() {
       stock: 0,
       buy: Number(document.getElementById('itemBuy').value),
       sale: Number(document.getElementById('itemSale').value),
-      image: document.getElementById('itemImage').value.trim() || null,
+      image: imageData,
       taxDeductible: taxable.checked,
       taxRate: taxable.checked ? Number(document.getElementById('itemTaxRate').value) : 0
     };
@@ -282,9 +389,62 @@ function openItemForm() {
   };
 }
 function openPartnerForm() {
-  openModal('Ajouter un partenaire','RÉSEAU COMMERCIAL',`<form id="partnerForm"><div class="field full"><label for="partnerName">NOM DU PARTENAIRE</label><input id="partnerName" maxlength="100" placeholder="Ex. : Société Martin" required></div><div class="field full"><label for="partnerImage">URL DE L'IMAGE (OPTIONNEL)</label><input id="partnerImage" type="url" placeholder="https://..."></div><div class="field full"><label for="partnerNote">NOTE</label><input id="partnerNote" maxlength="180" placeholder="Contact, pseudo en jeu, remarque..."></div><div class="field"><label>TYPE DE PARTENAIRE</label><div style="display:flex;gap:16px;flex-wrap:wrap;color:#cbd2d2;font-size:11px"><label><input id="partnerSupplier" type="checkbox"> Fournisseur</label><label><input id="partnerClient" type="checkbox"> Client</label></div></div><div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelPartner">Annuler</button><button class="btn btn-primary" type="submit">Ajouter le partenaire</button></div></form>`);
+  openModal('Ajouter un partenaire','RÉSEAU COMMERCIAL',`
+    <form id="partnerForm">
+      <div class="field full"><label for="partnerName">NOM DU PARTENAIRE</label><input id="partnerName" maxlength="100" placeholder="Ex. : Société Martin" required></div>
+      <div class="field full">
+        <label>IMAGE DU PARTENAIRE</label>
+        <div style="display:flex;gap:12px;align-items:center">
+          <div class="img-field-preview" id="partnerImgPreview"><span>?</span></div>
+          <input id="partnerImageFile" type="file" accept="image/*" style="font-size:11px;color:#6e767e">
+        </div>
+      </div>
+      <div class="field full"><label for="partnerNote">NOTE</label><input id="partnerNote" maxlength="180" placeholder="Contact, pseudo en jeu, remarque..."></div>
+      <div class="field"><label>TYPE DE PARTENAIRE</label><div style="display:flex;gap:16px;flex-wrap:wrap;color:#cbd2d2;font-size:11px"><label><input id="partnerSupplier" type="checkbox"> Fournisseur</label><label><input id="partnerClient" type="checkbox"> Client</label></div></div>
+      <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelPartner">Annuler</button><button class="btn btn-primary" type="submit">Ajouter le partenaire</button></div>
+    </form>`);
   document.getElementById('cancelPartner').onclick=closeModal;
-  document.getElementById('partnerForm').onsubmit=e=>{e.preventDefault();const name=document.getElementById('partnerName').value.trim();const supplier=document.getElementById('partnerSupplier').checked;const client=document.getElementById('partnerClient').checked;if(!supplier&&!client)return toast('Choisissez fournisseur et/ou client.',true);if(state.partners.some(p=>p.name.toLowerCase()===name.toLowerCase()))return toast('Ce partenaire existe déjà.',true);state.partners.push({id:uid(),name,supplier,client,note:document.getElementById('partnerNote').value.trim(),image:document.getElementById('partnerImage').value.trim()||null});closeModal();renderAll();toast('Partenaire ajouté au catalogue de démonstration.');};
+
+  let imageData = null;
+  document.getElementById('partnerImageFile').onchange = e => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        imageData = ev.target.result;
+        document.getElementById('partnerImgPreview').innerHTML = `<img src="${imageData}">`;
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  document.getElementById('partnerForm').onsubmit=e=>{
+    e.preventDefault();
+    const name=document.getElementById('partnerName').value.trim();
+    const supplier=document.getElementById('partnerSupplier').checked;
+    const client=document.getElementById('partnerClient').checked;
+    if(!supplier&&!client)return toast('Choisissez fournisseur et/ou client.',true);
+    if(state.partners.some(p=>p.name.toLowerCase()===name.toLowerCase()))return toast('Ce partenaire existe déjà.',true);
+    state.partners.push({id:uid(),name,supplier,client,note:document.getElementById('partnerNote').value.trim(),image:imageData});
+    closeModal();renderAll();toast('Partenaire ajouté au catalogue de démonstration.');
+  };
+}
+
+function openCategoryForm() {
+  openModal('Nouvelle catégorie', 'CATALOGUE PRODUITS', `
+    <form id="categoryForm">
+      <div class="field full"><label for="catName">NOM DE LA CATÉGORIE</label><input id="catName" placeholder="Ex. : Électronique" required></div>
+      <p class="page-footnote">La catégorie sera immédiatement disponible pour les nouveaux articles.</p>
+      <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelCat">Annuler</button><button class="btn btn-primary" type="submit">Créer la catégorie</button></div>
+    </form>`);
+  document.getElementById('cancelCat').onclick = closeModal;
+  document.getElementById('categoryForm').onsubmit = e => {
+    e.preventDefault();
+    const name = document.getElementById('catName').value.trim();
+    if (state.categories.some(c => c.toLowerCase() === name.toLowerCase())) return toast('Cette catégorie existe déjà.', true);
+    state.categories.push(name);
+    closeModal(); renderAll(); toast('Catégorie ajoutée.');
+  };
 }
 function openOrderDetails(id) {
   const order=state.orders.find(o=>o.id===id); if(!order)return;
