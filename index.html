@@ -28,7 +28,10 @@
       </nav>
       <div class="sidebar-bottom">
         <div class="demo-note"><span class="pulse"></span><span><strong>Mode démonstration</strong><small>Données locales fictives</small></span></div>
-        <button class="profile-mini" type="button"><span class="avatar">JD</span><span><strong>Jean Dupont</strong><small>Responsable vente</small></span><span class="chevron">⌄</span></button>
+        <div class="profile-group">
+          <button class="profile-mini" type="button" id="discord-login"><span class="avatar">JD</span><span><strong>Se connecter</strong><small>via Discord</small></span><span class="chevron">⌄</span></button>
+          <button class="logout-btn" id="logout-sidebar" hidden title="Se déconnecter">⏻</button>
+        </div>
       </div>
     </aside>
 
@@ -36,7 +39,14 @@
       <header class="topbar">
         <button class="mobile-brand" data-page="dashboard"><span class="brand-mark">CM</span><strong>COMPANY MANAGER</strong></button>
         <div class="breadcrumb"><span>ESPACE COMPAGNIE</span><b>/</b><strong id="crumbLabel">VUE GÉNÉRALE</strong></div>
-        <div class="top-actions"><span class="demo-pill"><i></i> DÉMO</span><button class="icon-btn" id="helpBtn" title="À propos">?</button><span class="avatar avatar-top">JD</span></div>
+        <div class="top-actions">
+          <span class="demo-pill"><i></i> DÉMO</span>
+          <button class="icon-btn" id="helpBtn" title="À propos">?</button>
+          <div class="top-profile">
+            <span class="avatar avatar-top" id="discord-login-top" style="cursor:pointer">JD</span>
+            <button class="logout-btn-top" id="logout-top" hidden title="Se déconnecter">⏻</button>
+          </div>
+        </div>
       </header>
 
       <div class="content-wrap">
@@ -122,6 +132,6 @@
 
   <div class="modal-backdrop" id="modalBackdrop" hidden><section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-head"><div><div class="eyebrow" id="modalEyebrow">NOUVELLE OPÉRATION</div><h2 id="modalTitle">Créer un bon</h2></div><button class="icon-btn" id="closeModal" aria-label="Fermer">×</button></div><div id="modalContent"></div></section></div>
   <div class="toast-region" id="toastRegion" aria-live="polite"></div>
-  <script src="assets/js/app.js"></script>
+  <script type="module" src="assets/js/app.js"></script>
 </body>
 </html>

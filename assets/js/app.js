@@ -480,3 +480,58 @@ document.getElementById('operationFilter')?.addEventListener('change',renderOper
 ['historySearch','historyType','historyStatus'].forEach(id=>document.getElementById(id)?.addEventListener(id==='historySearch'?'input':'change',renderHistory));
 document.getElementById('helpBtn').addEventListener('click',()=>toast('Prototype visuel : les données sont fictives et stockées uniquement en mémoire pendant la session.'));
 renderAll();
+
+
+import { signInWithDiscord, getCurrentSession, signOut, syncDiscordIdentity } from "./auth.js";
+
+async function initAuth() {
+  const session = await getCurrentSession();
+  if (session?.user) {
+    await syncDiscordIdentity();
+  }
+  const updateUI = (user) => {
+    const loginBtn = document.getElementById("discord-login");
+    const loginBtnTop = document.getElementById("discord-login-top");
+    const logoutBtn = document.getElementById("logout-sidebar");
+    const logoutTop = document.getElementById("logout-top");
+
+    if (user) {
+      const metadata = user.user_metadata || {};
+      const name = metadata.full_name || metadata.name || metadata.custom_claims?.global_name || metadata.preferred_username || "Utilisateur";
+      const avatarUrl = metadata.avatar_url;
+      const avatarInitials = initials(name);
+
+      // Update dashboard welcome message
+      const subheading = document.querySelector('#page-dashboard .subheading');
+      if (subheading) subheading.textContent = `Bienvenue sur votre espace de gestion, ${name.split(' ')[0]}.`;
+
+      if (loginBtn) {
+        loginBtn.innerHTML = `<span class="avatar">${avatarUrl ? `<img src="${avatarUrl}" alt="">` : avatarInitials}</span><span><strong>${escapeHtml(name)}</strong><small>Connecté</small></span><span class="chevron">⌄</span>`;
+        loginBtn.onclick = null;
+      }
+      if (loginBtnTop) {
+        loginBtnTop.innerHTML = avatarUrl ? `<img src="${avatarUrl}" alt="" style="width:100%;height:100%;border-radius:inherit;object-fit:cover">` : avatarInitials;
+        loginBtnTop.onclick = null;
+      }
+
+      const doLogout = () => { if(confirm("Se déconnecter ?")) { signOut().then(() => window.location.reload()); } };
+      if (logoutBtn) { logoutBtn.hidden = false; logoutBtn.onclick = doLogout; }
+      if (logoutTop) { logoutTop.hidden = false; logoutTop.onclick = doLogout; }
+    } else {
+      if (loginBtn) {
+        loginBtn.innerHTML = `<span class="avatar">?</span><span><strong>Se connecter</strong><small>via Discord</small></span><span class="chevron">⌄</span>`;
+        loginBtn.onclick = signInWithDiscord;
+      }
+      if (loginBtnTop) {
+        loginBtnTop.innerHTML = "?";
+        loginBtnTop.onclick = signInWithDiscord;
+      }
+      if (logoutBtn) logoutBtn.hidden = true;
+      if (logoutTop) logoutTop.hidden = true;
+    }
+  };
+
+  updateUI(session?.user);
+}
+
+initAuth();
