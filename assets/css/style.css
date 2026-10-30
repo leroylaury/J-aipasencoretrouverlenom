@@ -92,6 +92,11 @@ tbody tr:hover td { background: rgba(255, 255, 255, 0.04) !important; }
 .logout-btn-top:hover { color: var(--red); border-color: var(--red); }
 .logout-btn-top:focus { outline: none; }
 
+.chart-tabs { display: flex; gap: 4px; background: var(--bg); padding: 2px; border-radius: 6px; border: 1px solid var(--border); }
+.chart-tab { background: none; border: none; color: var(--text-dim); padding: 4px 10px; font-size: 11px; font-weight: 600; cursor: pointer; border-radius: 4px; transition: all 0.2s; }
+.chart-tab:hover { color: var(--text); }
+.chart-tab.active { background: var(--panel); color: var(--orange); box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+
 @media (max-width: 720px) {
   .logout-btn-top { width: 34px; height: 34px; font-size: 14px; }
 }

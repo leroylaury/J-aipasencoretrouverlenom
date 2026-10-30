@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#171b1f">
   <meta name="description" content="Company Manager — prototype de gestion des stocks et des opérations commerciales.">
-  <title>Company Manager — Démonstration</title>
+  <title>Company Manager</title>
   <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
@@ -13,7 +13,7 @@
     <aside class="sidebar" aria-label="Navigation principale">
       <a class="brand" href="#dashboard" aria-label="Company Manager, accueil">
         <span class="brand-mark">CM</span>
-        <span class="brand-copy"><strong>COMPANY</strong><small>MANAGER / DEMO</small></span>
+        <span class="brand-copy"><strong>COMPANY</strong><small>MANAGER</small></span>
       </a>
       <div class="side-label">ESPACE DE TRAVAIL</div>
       <nav class="side-nav">
@@ -27,7 +27,6 @@
         <button class="nav-link" data-page="finance"><span class="nav-icon">▥</span><span>Trésorerie</span></button>
       </nav>
       <div class="sidebar-bottom">
-        <div class="demo-note"><span class="pulse"></span><span><strong>Mode démonstration</strong><small>Données locales fictives</small></span></div>
         <div class="profile-group">
           <button class="profile-mini" type="button" id="discord-login"><span class="avatar">JD</span><span><strong>Se connecter</strong><small>via Discord</small></span><span class="chevron">⌄</span></button>
           <button class="logout-btn" id="logout-sidebar" hidden title="Se déconnecter">⏻</button>
@@ -40,7 +39,6 @@
         <button class="mobile-brand" data-page="dashboard"><span class="brand-mark">CM</span><strong>COMPANY MANAGER</strong></button>
         <div class="breadcrumb"><span>ESPACE COMPAGNIE</span><b>/</b><strong id="crumbLabel">VUE GÉNÉRALE</strong></div>
         <div class="top-actions">
-          <span class="demo-pill"><i></i> DÉMO</span>
           <button class="icon-btn" id="helpBtn" title="À propos">?</button>
           <div class="top-profile">
             <span class="avatar avatar-top" id="discord-login-top" style="cursor:pointer">JD</span>
@@ -53,13 +51,35 @@
         <section class="page active" id="page-dashboard">
           <div class="page-heading"><div><div class="eyebrow">VENDREDI 30 OCTOBRE 2026 <span class="eyebrow-line"></span> RAPPORT OPÉRATIONNEL</div><h1>Vue générale<span class="orange-dot">.</span></h1><p class="subheading">Bienvenue sur votre espace de gestion, Jean.</p></div><button class="btn btn-primary" data-action="new-sale"><span>＋</span> Nouvelle vente</button></div>
           <div class="metric-grid">
-            <article class="metric-card metric-cash"><div class="metric-top"><span class="metric-label">TRÉSORERIE DISPONIBLE</span><span class="metric-icon">s</span></div><div class="metric-value" id="cashMetric">125 400,00 s</div><div class="metric-foot"><span class="positive">↗ Solde de démonstration</span><span>COMPAGNIE</span></div><div class="metric-stripe"></div></article>
-            <article class="metric-card"><div class="metric-top"><span class="metric-label">VALEUR DU STOCK</span><span class="metric-icon">▤</span></div><div class="metric-value" id="stockValueMetric">84 500,00 s</div><div class="metric-foot"><span id="stockUnitsMetric">248 unités</span><span>AU PRIX D'ACHAT</span></div></article>
-            <article class="metric-card"><div class="metric-top"><span class="metric-label">VENTES EN ATTENTE</span><span class="metric-icon">◷</span></div><div class="metric-value" id="pendingMetric">12</div><div class="metric-foot"><span class="warning-text">À confirmer</span><span>BONS DE VENTE</span></div></article>
-            <article class="metric-card"><div class="metric-top"><span class="metric-label">MOUVEMENTS DU MOIS</span><span class="metric-icon">⇄</span></div><div class="metric-value" id="movementMetric">36</div><div class="metric-foot"><span>Achats & ventes</span><span>OCTOBRE</span></div></article>
+            <article class="metric-card metric-cash"><div class="metric-top"><span class="metric-label">TRÉSORERIE DISPONIBLE</span><span class="metric-icon">s</span></div><div class="metric-value" id="cashMetric">0,00 s</div><div class="metric-foot"><span>SOLDE RÉEL</span><span>COMPAGNIE</span></div><div class="metric-stripe"></div></article>
+            <article class="metric-card"><div class="metric-top"><span class="metric-label">VALEUR DU STOCK</span><span class="metric-icon">▤</span></div><div class="metric-value" id="stockValueMetric">0,00 s</div><div class="metric-foot"><span id="stockUnitsMetric">0 unités</span><span>AU PRIX D'ACHAT</span></div></article>
+            <article class="metric-card"><div class="metric-top"><span class="metric-label">VENTES EN ATTENTE</span><span class="metric-icon">◷</span></div><div class="metric-value" id="pendingMetric">0</div><div class="metric-foot"><span class="warning-text">À confirmer</span><span>BONS DE VENTE</span></div></article>
+            <article class="metric-card"><div class="metric-top"><span class="metric-label">MOUVEMENTS DU MOIS</span><span class="metric-icon">⇄</span></div><div class="metric-value" id="movementMetric">0</div><div class="metric-foot"><span>Achats & ventes</span><span>OCTOBRE</span></div></article>
           </div>
           <div class="dashboard-grid">
-            <article class="panel chart-panel"><div class="panel-heading"><div><div class="eyebrow">ACTIVITÉ FINANCIÈRE</div><h2>Mouvements de trésorerie</h2></div><span class="select-static">7 derniers jours⌄</span></div><div class="chart-legend"><span><i class="legend-dot orange"></i> Entrées</span><span><i class="legend-dot slate"></i> Sorties</span></div><div class="chart" aria-label="Graphique indicatif des mouvements sur sept jours"><div class="chart-y"><span>8k</span><span>6k</span><span>4k</span><span>2k</span><span>0</span></div><div class="chart-main"><div class="chart-gridlines"><i></i><i></i><i></i><i></i><i></i></div><div class="bar-group"><div class="bars"><i class="bar out" style="height:25%"></i><i class="bar in" style="height:39%"></i></div><small>LUN</small></div><div class="bar-group"><div class="bars"><i class="bar out" style="height:46%"></i><i class="bar in" style="height:62%"></i></div><small>MAR</small></div><div class="bar-group"><div class="bars"><i class="bar out" style="height:35%"></i><i class="bar in" style="height:30%"></i></div><small>MER</small></div><div class="bar-group"><div class="bars"><i class="bar out" style="height:60%"></i><i class="bar in" style="height:78%"></i></div><small>JEU</small></div><div class="bar-group"><div class="bars"><i class="bar out" style="height:27%"></i><i class="bar in" style="height:54%"></i></div><small>VEN</small></div><div class="bar-group"><div class="bars"><i class="bar out" style="height:40%"></i><i class="bar in" style="height:45%"></i></div><small>SAM</small></div><div class="bar-group"><div class="bars"><i class="bar out" style="height:19%"></i><i class="bar in" style="height:68%"></i></div><small>DIM</small></div></div></div><div class="chart-caption"><span>DONNÉES ILLUSTRATIVES</span><span>EUR · PAR JOUR</span></div></article>
+            <article class="panel chart-panel">
+              <div class="panel-heading">
+                <div>
+                  <div class="eyebrow">ACTIVITÉ FINANCIÈRE</div>
+                  <h2>Mouvements de trésorerie</h2>
+                </div>
+                <div class="chart-tabs">
+                  <button class="chart-tab active" data-range="7">7j</button>
+                  <button class="chart-tab" data-range="30">30j</button>
+                </div>
+              </div>
+              <div class="chart-legend">
+                <span><i class="legend-dot orange"></i> Entrées</span>
+                <span><i class="legend-dot slate"></i> Sorties</span>
+              </div>
+              <div id="cashflowChartContainer">
+                <!-- Le graphique sera injecté ici -->
+              </div>
+              <div class="chart-caption">
+                <span>DONNÉES RÉELLES</span>
+                <span>SEP (s) · PAR JOUR</span>
+              </div>
+            </article>
             <article class="panel quick-panel"><div class="panel-heading"><div><div class="eyebrow">ACCÈS RAPIDE</div><h2>Nouvelle opération</h2></div></div><button class="quick-action" data-action="new-buy"><span class="quick-symbol buy">↓</span><span><strong>Enregistrer un achat</strong><small>Entrée de marchandises</small></span><b>→</b></button><button class="quick-action" data-action="new-sale"><span class="quick-symbol sell">↑</span><span><strong>Créer une vente</strong><small>Nouvelle prévision client</small></span><b>→</b></button><button class="quick-action" data-page="stock"><span class="quick-symbol stock">▤</span><span><strong>Consulter le stock</strong><small>Catalogue et disponibilités</small></span><b>→</b></button><div class="quick-foot"><span class="pulse"></span> SYSTÈME OPÉRATIONNEL</div></article>
           </div>
           <article class="panel table-panel"><div class="panel-heading"><div><div class="eyebrow">DERNIÈRES ACTIVITÉS</div><h2>Mouvements récents</h2></div><button class="text-btn" data-page="history">Tout l'historique ↗</button></div><div class="table-scroll"><table><thead><tr><th>OPÉRATION</th><th class="mobile-show-compressed"><span class="desktop-only">PARTENAIRE</span><span class="mobile-only" title="Partenaire">P.</span></th><th class="mobile-hide">DATE</th><th class="desktop-only">STATUT</th><th class="align-right">MONTANT</th></tr></thead><tbody id="recentRows"></tbody></table></div></article>
@@ -67,14 +87,14 @@
 
         <section class="page" id="page-stock">
           <div class="page-heading"><div><div class="eyebrow">GESTION DES RESSOURCES</div><h1>Inventaire<span class="orange-dot">.</span></h1><p class="subheading">Consultez les quantités et les derniers prix connus.</p></div><div style="display:flex;gap:8px"><button class="btn btn-secondary" data-action="new-item">＋ Nouvel article</button><button class="btn btn-secondary" data-action="new-buy">＋ Achat</button><button class="btn btn-primary" data-action="new-sale">＋ Vente</button></div></div>
-          <div class="stock-summary"><div><small>ARTICLES RÉFÉRENCÉS</small><strong id="itemCount">05</strong></div><div><small>UNITÉS EN STOCK</small><strong id="stockUnitsSummary">248</strong></div><div><small>CATÉGORIES</small><strong>03</strong></div></div>
+          <div class="stock-summary"><div><small>ARTICLES RÉFÉRENCÉS</small><strong id="itemCount">00</strong></div><div><small>UNITÉS EN STOCK</small><strong id="stockUnitsSummary">0</strong></div><div><small>CATÉGORIES</small><strong id="categoryCount">00</strong></div></div>
           <div class="toolbar">
             <label class="search-box"><span>⌕</span><input id="stockSearch" type="search" placeholder="Rechercher un article..."></label>
             <select id="categoryFilter" aria-label="Filtrer par catégorie">
               <option value="all">Toutes les catégories</option>
             </select>
             <button class="btn btn-secondary btn-sm" data-action="new-category" style="padding:4px 12px;font-size:11px">＋ Catégorie</button>
-            <span class="toolbar-count" id="stockResultCount">5 ARTICLES</span>
+            <span class="toolbar-count" id="stockResultCount">0 ARTICLES</span>
           </div>
           <article class="panel table-panel"><div class="table-scroll"><table><thead><tr><th>ARTICLE</th><th class="mobile-hide">CATÉGORIE</th><th class="align-right">STOCK RÉEL</th><th class="align-right desktop-only">DERNIER ACHAT</th><th class="align-right desktop-only">DERNIÈRE VENTE</th><th></th></tr></thead><tbody id="stockRows"></tbody></table></div></article>
           <p class="page-footnote">Le stock réel évolue lors de la confirmation d'un achat ou d'une vente. Les ventes en prévision ne réservent pas de quantité.</p>
@@ -88,7 +108,7 @@
 
         <section class="page" id="page-partners">
           <div class="page-heading"><div><div class="eyebrow">RÉSEAU COMMERCIAL</div><h1>Partenaires<span class="orange-dot">.</span></h1><p class="subheading">Fournisseurs et clients de la compagnie.</p></div><button class="btn btn-primary" data-action="new-partner">＋ Ajouter</button></div>
-          <div class="toolbar"><label class="search-box"><span>⌕</span><input id="partnerSearch" type="search" placeholder="Rechercher un partenaire..."></label><span class="toolbar-count" id="partnerCount">4 PARTENAIRES</span></div>
+          <div class="toolbar"><label class="search-box"><span>⌕</span><input id="partnerSearch" type="search" placeholder="Rechercher un partenaire..."></label><span class="toolbar-count" id="partnerCount">0 PARTENAIRES</span></div>
           <div class="partner-grid" id="partnerGrid"></div>
         </section>
 
@@ -99,11 +119,11 @@
         </section>
 
         <section class="page" id="page-finance">
-          <div class="page-heading"><div><div class="eyebrow">SUIVI FINANCIER</div><h1>Trésorerie<span class="orange-dot">.</span></h1><p class="subheading">Suivi des entrées et sorties de fonds.</p></div></div>
-          <div class="finance-hero"><div><small>SOLDE DISPONIBLE</small><strong id="financeCash">125 400,00 s</strong><span>COMPAGNIE · MODE DÉMONSTRATION</span></div><div class="finance-mark">s</div></div>
-          <div class="metric-grid finance-metrics"><article class="metric-card"><div class="metric-top"><span class="metric-label">ENTRÉES CONFIRMÉES</span><span class="metric-icon positive">↗</span></div><div class="metric-value positive" id="financeIn">32 700,00 s</div><div class="metric-foot"><span>Ventes encaissées</span></div></article><article class="metric-card"><div class="metric-top"><span class="metric-label">SORTIES CONFIRMÉES</span><span class="metric-icon negative">↘</span></div><div class="metric-value negative" id="financeOut">18 200,00 s</div><div class="metric-foot"><span>Achats réglés</span></div></article></div>
+          <div class="page-heading"><div><div class="eyebrow">SUIVI FINANCIER</div><h1>Trésorerie<span class="orange-dot">.</span></h1><p class="subheading">Suivi des entrées et sorties de fonds.</p></div><button class="btn btn-secondary" data-action="edit-treasury" id="editTreasuryBtn" hidden><span>⚙</span> Paramètres</button></div>
+          <div class="finance-hero"><div><small>SOLDE DISPONIBLE</small><strong id="financeCash">0,00 s</strong><span>COMPAGNIE</span></div><div class="finance-mark">s</div></div>
+          <div class="metric-grid finance-metrics"><article class="metric-card"><div class="metric-top"><span class="metric-label">ENTRÉES CONFIRMÉES</span><span class="metric-icon positive">↗</span></div><div class="metric-value positive" id="financeIn">0,00 s</div><div class="metric-foot"><span>Ventes encaissées</span></div></article><article class="metric-card"><div class="metric-top"><span class="metric-label">SORTIES CONFIRMÉES</span><span class="metric-icon negative">↘</span></div><div class="metric-value negative" id="financeOut">0,00 s</div><div class="metric-foot"><span>Achats réglés</span></div></article></div>
           <article class="panel table-panel"><div class="panel-heading"><div><div class="eyebrow">JOURNAL DE CAISSE</div><h2>Mouvements financiers</h2></div></div><div class="table-scroll"><table><thead><tr><th>RÉFÉRENCE</th><th>LIBELLÉ</th><th>DATE</th><th class="align-right">MOUVEMENT</th></tr></thead><tbody id="financeRows"></tbody></table></div></article>
-          <p class="page-footnote">Les valeurs sont fictives. Le solde de démonstration est un point de départ ; le raccordement Supabase apportera les données réelles.</p>
+          <p class="page-footnote">Le stock réel évolue lors de la confirmation d'un achat ou d'une vente. Les ventes en prévision ne réservent pas de quantité.</p>
         </section>
 
         <section class="page" id="page-tax">
@@ -116,7 +136,7 @@
           <article class="panel table-panel"><div class="panel-heading"><div><div class="eyebrow">DÉTAILS PAR LIGNE</div><h2>Lignes d'achat déductibles</h2></div></div><div class="table-scroll"><table><thead><tr><th>DATE</th><th>ARTICLE</th><th class="align-right mobile-hide">MONTANT HT</th><th class="align-right desktop-only">TAUX</th><th class="align-right">DÉDUCTION</th></tr></thead><tbody id="taxRows"></tbody></table></div></article>
         </section>
       </div>
-      <footer class="footer"><span>COMPANY MANAGER <b>·</b> INTERFACE DE DÉMONSTRATION</span><span>BUILD 0.1.0</span></footer>
+      <footer class="footer"><span>COMPANY MANAGER</span><span>BUILD 0.1.0</span></footer>
     </main>
   </div>
 

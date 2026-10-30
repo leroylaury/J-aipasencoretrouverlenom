@@ -1,11 +1,10 @@
 'use strict';
 
-const eur = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });
 const sCurrency = (val) => {
   return intFmt.format(val) + ' s';
 };
 const intFmt = new Intl.NumberFormat('fr-FR');
-const today = new Date('2026-10-30T13:00:00');
+const today = new Date();
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => (Math.random() * 16 | 0).toString(16)));
 const initials = name => name.split(/\s+/).map(x => x[0]).slice(0, 2).join('').toUpperCase();
 const fmtDate = value => new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value));
@@ -36,7 +35,18 @@ document.addEventListener('click', e => {
   const pageButton = e.target.closest('[data-page]');
   if (pageButton) { e.preventDefault(); showPage(pageButton.dataset.page); return; }
   const actionButton = e.target.closest('[data-action]');
-  if (actionButton) { openAction(actionButton.dataset.action); }
+  if (actionButton) {
+    if (actionButton.dataset.action === 'edit-treasury') { openTreasuryForm(); return; }
+    openAction(actionButton.dataset.action);
+    return;
+  }
+  const chartTab = e.target.closest('.chart-tab');
+  if (chartTab) {
+    document.querySelectorAll('.chart-tab').forEach(t => t.classList.toggle('active', t === chartTab));
+    currentChartRange = parseInt(chartTab.dataset.range);
+    renderCashflowChart();
+    return;
+  }
 });
 
 function statusBadge(status) {
@@ -64,6 +74,61 @@ function renderDashboard() {
   document.getElementById('movementMetric').textContent = intFmt.format(state.orders.length);
   document.getElementById('navStockCount').textContent = String(state.items.length).padStart(2,'0');
   document.getElementById('recentRows').innerHTML = [...state.orders].sort((a,b) => new Date(b.date)-new Date(a.date)).slice(0,5).map(order => `<tr><td><div class="reference-cell"><span class="item-symbol">${order.type==='achat'?'↓':'↑'}</span><span><span class="cell-title">${escapeHtml(order.ref)}</span><span class="cell-sub">${order.lines.length} ligne(s)</span></span></div></td><td>${partnerName(order.partner)}</td><td class="mobile-hide">${fmtDate(order.date)}</td><td class="desktop-only">${statusBadge(order.status)}</td><td class="align-right"><strong>${sCurrency(orderTotal(order))}</strong></td></tr>`).join('');
+  renderCashflowChart();
+}
+let currentChartRange = 7;
+function renderCashflowChart() {
+  const container = document.getElementById('cashflowChartContainer');
+  if (!container) return;
+
+  const days = [];
+  for (let i = currentChartRange - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    d.setHours(0, 0, 0, 0);
+    days.push(d);
+  }
+
+  const data = days.map(day => {
+    const dayEnd = new Date(day);
+    dayEnd.setHours(23, 59, 59, 999);
+    const dayMovements = state.movements.filter(m => {
+      const mDate = new Date(m.date);
+      return mDate >= day && mDate <= dayEnd;
+    });
+    return {
+      label: day.toLocaleDateString('fr-FR', { weekday: 'short' }).toUpperCase().replace('.', ''),
+      fullLabel: day.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
+      in: dayMovements.filter(m => m.type === 'vente').reduce((sum, m) => sum + m.amount, 0),
+      out: dayMovements.filter(m => m.type === 'achat').reduce((sum, m) => sum + m.amount, 0)
+    };
+  });
+
+  const maxVal = Math.max(...data.map(d => Math.max(d.in, d.out)), 1000);
+  const roundedMax = Math.ceil(maxVal / 1000) * 1000;
+  const yAxis = [roundedMax, roundedMax * 0.75, roundedMax * 0.5, roundedMax * 0.25, 0];
+
+  const fmtK = val => val >= 1000 ? (val / 1000).toFixed(val % 1000 === 0 ? 0 : 1) + 'k' : val;
+
+  container.innerHTML = `
+    <div class="chart" aria-label="Graphique des mouvements sur ${currentChartRange} jours">
+      <div class="chart-y">
+        ${yAxis.map(y => `<span>${fmtK(y)}</span>`).join('')}
+      </div>
+      <div class="chart-main">
+        <div class="chart-gridlines"><i></i><i></i><i></i><i></i><i></i></div>
+        ${data.map(d => `
+          <div class="bar-group" title="${d.fullLabel}: +${sCurrency(d.in)} / -${sCurrency(d.out)}">
+            <div class="bars">
+              <i class="bar out" style="height:${(d.out / roundedMax) * 100}%"></i>
+              <i class="bar in" style="height:${(d.in / roundedMax) * 100}%"></i>
+            </div>
+            <small>${currentChartRange > 7 ? d.fullLabel.split(' ')[0] : d.label}</small>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
 }
 function renderStock() {
   const query = (document.getElementById('stockSearch')?.value || '').trim().toLowerCase();
@@ -78,6 +143,7 @@ function renderStock() {
   }
 
   document.getElementById('itemCount').textContent = String(state.items.length).padStart(2,'0');
+  document.getElementById('categoryCount').textContent = String(state.categories.length).padStart(2,'0');
   document.getElementById('stockUnitsSummary').textContent = intFmt.format(stockUnits);
   document.getElementById('stockResultCount').textContent = `${filtered.length} ARTICLE${filtered.length>1?'S':''}`;
   document.getElementById('stockRows').innerHTML = filtered.length ? filtered.map(x => `<tr><td><div class="item-cell"><span class="item-symbol">${x.image ? `<img src="${escapeHtml(x.image)}" alt="">` : escapeHtml(x.glyph)}</span><span><span class="cell-title">${escapeHtml(x.name)}</span><span class="cell-sub mobile-hide">Réf. ${escapeHtml(x.id.toUpperCase())}</span></span></div></td><td class="mobile-hide">${escapeHtml(x.category)}</td><td class="align-right"><strong>${intFmt.format(x.stock)}</strong> <span class="cell-sub">unités</span></td><td class="align-right desktop-only">${sCurrency(x.buy)}</td><td class="align-right desktop-only">${sCurrency(x.sale)}</td><td><button class="row-action" data-item-action="${x.id}">Opérer</button></td></tr>`).join('') : `<tr><td colspan="6"><div class="empty-state">Aucun article ne correspond à votre recherche.</div></td></tr>`;
@@ -175,6 +241,9 @@ function renderFinance() {
   document.getElementById('financeIn').textContent = sCurrency(incoming);
   document.getElementById('financeOut').textContent = sCurrency(outgoing);
   document.getElementById('financeRows').innerHTML = [...state.movements].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(m=>`<tr><td><span class="cell-title">${escapeHtml(m.ref)}</span></td><td class="mobile-hide">${escapeHtml(m.label)}</td><td class="mobile-hide">${fmtDate(m.date)}</td><td class="align-right ${m.type==='vente'?'positive':'negative'}"><strong>${m.type==='vente'?'+':'−'} ${sCurrency(m.amount)}</strong></td></tr>`).join('') || `<tr><td colspan="4"><div class="empty-state">Aucun mouvement financier.</div></td></tr>`;
+
+  const editBtn = document.getElementById('editTreasuryBtn');
+  if (editBtn) editBtn.hidden = !api.can('treasury.manage');
 }
 function renderTax() {
   const taxLines = [];
@@ -402,10 +471,10 @@ function openCategoryForm() {
 }
 function openOrderDetails(id) {
   const order=state.orders.find(o=>o.id===id); if(!order)return;
-  const lines=order.lines.map(l=>{const item=itemFor(l.itemId);return `<tr><td>${escapeHtml(item?.name||'Article')}</td><td>${l.quantity}</td><td>${eur.format(l.unitPrice)}</td><td class="align-right">${eur.format(Math.ceil(l.quantity*l.unitPrice))}</td></tr>`;}).join('');
+  const lines=order.lines.map(l=>{const item=itemFor(l.itemId);return `<tr><td>${escapeHtml(item?.name||'Article')}</td><td>${l.quantity}</td><td>${sCurrency(l.unitPrice)}</td><td class="align-right">${sCurrency(Math.ceil(l.quantity*l.unitPrice))}</td></tr>`;}).join('');
   let buttons='';
   if(order.type==='vente'&&order.status==='prevision'&&api.can('vente.manage')) buttons=`<button class="btn btn-primary" id="confirmSale">Confirmer la livraison</button><button class="btn btn-secondary" id="cancelSale">Annuler le bon</button>`;
-  openModal(`Bon ${order.ref}`,'DÉTAIL DE L’OPÉRATION',`<div class="detail-list"><div class="detail-box"><small>TYPE</small><strong>${order.type==='achat'?'Achat':'Vente'}</strong></div><div class="detail-box"><small>STATUT</small>${statusBadge(order.status)}</div><div class="detail-box"><small>PARTENAIRE</small><strong>${partnerName(order.partner)}</strong></div><div class="detail-box"><small>DATE</small><strong>${fmtDate(order.date)}</strong></div></div><div class="table-scroll"><table style="min-width:420px"><thead><tr><th>ARTICLE</th><th>QTÉ</th><th>PRIX UNIT.</th><th class="align-right">TOTAL</th></tr></thead><tbody>${lines}</tbody></table></div><div class="order-total"><span>TOTAL DU BON</span><strong>${eur.format(orderTotal(order))}</strong></div><p class="page-footnote">Créé par ${escapeHtml(order.createdBy)} · Version ${order.version}</p><div class="modal-actions"><button class="btn btn-secondary" id="closeDetails">Fermer</button>${buttons}</div>`);
+  openModal(`Bon ${order.ref}`,'DÉTAIL DE L’OPÉRATION',`<div class="detail-list"><div class="detail-box"><small>TYPE</small><strong>${order.type==='achat'?'Achat':'Vente'}</strong></div><div class="detail-box"><small>STATUT</small>${statusBadge(order.status)}</div><div class="detail-box"><small>PARTENAIRE</small><strong>${partnerName(order.partner)}</strong></div><div class="detail-box"><small>DATE</small><strong>${fmtDate(order.date)}</strong></div></div><div class="table-scroll"><table style="min-width:420px"><thead><tr><th>ARTICLE</th><th>QTÉ</th><th>PRIX UNIT.</th><th class="align-right">TOTAL</th></tr></thead><tbody>${lines}</tbody></table></div><div class="order-total"><span>TOTAL DU BON</span><strong>${sCurrency(orderTotal(order))}</strong></div><p class="page-footnote">Créé par ${escapeHtml(order.createdBy)} · Version ${order.version}</p><div class="modal-actions"><button class="btn btn-secondary" id="closeDetails">Fermer</button>${buttons}</div>`);
   document.getElementById('closeDetails').onclick=closeModal;
   document.getElementById('confirmSale')?.addEventListener('click',()=>confirmSale(order.id));
   document.getElementById('cancelSale')?.addEventListener('click',()=>cancelSale(order.id));
@@ -421,6 +490,35 @@ async function cancelSale(id) {
   catch(e) { toast(e.message||'Erreur serveur',true); }
 }
 
+function openTreasuryForm() {
+  openModal('Paramètres de trésorerie', 'FINANCES COMPAGNIE', `
+    <form id="treasuryForm">
+      <div class="field full">
+        <label for="openingCash">SOLDE INITIAL (SEP)</label>
+        <input id="openingCashInput" type="number" step="0.01" value="${state.openingCash}" required>
+      </div>
+      <p class="page-footnote">Le solde initial est la base de calcul de la trésorerie disponible. Les mouvements confirmés s'y ajoutent ou s'en déduisent.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" id="cancelTreasury">Annuler</button>
+        <button class="btn btn-primary" type="submit">Enregistrer</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('cancelTreasury').onclick = closeModal;
+  document.getElementById('treasuryForm').onsubmit = async e => {
+    e.preventDefault();
+    const val = Number(document.getElementById('openingCashInput').value);
+    try {
+      await api.setOpeningCash(val);
+      await refresh();
+      closeModal();
+      toast('Solde initial mis à jour.');
+    } catch(err) {
+      toast(err.message || 'Erreur serveur', true);
+    }
+  };
+}
+
 document.addEventListener('click',e=>{
   const itemBtn=e.target.closest('[data-item-action]');if(itemBtn){const item=itemFor(itemBtn.dataset.itemAction);if(!item)return;openModal(item.name,'ACTION SUR LE STOCK',`<div class="detail-box"><small>STOCK DISPONIBLE</small><strong>${intFmt.format(item.stock)} unités</strong></div><div class="modal-actions"><button class="btn btn-secondary" id="itemBuy">Enregistrer un achat</button><button class="btn btn-primary" id="itemSell">Créer une vente</button></div>`);document.getElementById('itemBuy').onclick=()=>openOrderForm('achat');document.getElementById('itemSell').onclick=()=>openOrderForm('vente');return;}
   const orderBtn=e.target.closest('[data-order]');if(orderBtn)openOrderDetails(orderBtn.dataset.order);
@@ -430,6 +528,15 @@ document.getElementById('operationFilter')?.addEventListener('change',renderOper
 ['partnerSearch'].forEach(id=>document.getElementById(id)?.addEventListener('input',renderPartners));
 ['historySearch','historyType','historyStatus'].forEach(id=>document.getElementById(id)?.addEventListener(id==='historySearch'?'input':'change',renderHistory));
 document.getElementById('helpBtn').addEventListener('click',()=>toast('Données synchronisées avec Supabase.'));
+function updateDashboardDate() {
+  const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
+  const formatted = new Intl.DateTimeFormat('fr-FR', options).format(new Date()).toUpperCase();
+  const eyebrow = document.querySelector('#page-dashboard .eyebrow');
+  if (eyebrow) {
+    eyebrow.innerHTML = `${formatted} <span class="eyebrow-line"></span> RAPPORT OPÉRATIONNEL`;
+  }
+}
+updateDashboardDate();
 renderAll();
 
 
@@ -439,7 +546,8 @@ import * as api from "./api.js";
 async function refresh() {
   const d = await api.loadAll();
   Object.assign(state, d);
-  rebuildMovements(); renderAll();
+  rebuildMovements();
+  renderAll();
 }
 
 const NEEDS = { stock:['stock.read'], operations:['achat.create','vente.manage'], partners:['partners.read'],
@@ -484,7 +592,7 @@ async function initAuth() {
 
       // Update dashboard welcome message
       const subheading = document.querySelector('#page-dashboard .subheading');
-      if (subheading) subheading.textContent = `Bienvenue sur votre espace de gestion, ${name.split(' ')[0]}.`;
+      if (subheading && !subheading.dataset.manual) subheading.textContent = `Bienvenue sur votre espace de gestion, ${name.split(' ')[0]}.`;
 
       if (loginBtn) {
         loginBtn.innerHTML = `<span class="avatar">${avatarUrl ? `<img src="${avatarUrl}" alt="">` : avatarInitials}</span><span><strong>${escapeHtml(name)}</strong><small>Connecté</small></span><span class="chevron">⌄</span>`;

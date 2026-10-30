@@ -47,7 +47,7 @@ export async function loadPermissions() {
 // Charge uniquement ce que les droits de l'utilisateur permettent (sinon RLS renverrait du vide / une erreur 42501)
 export async function loadAll() {
   const when = (ok, f) => (ok ? f() : Promise.resolve([]));
-  const [cats, parts, stock, costs, orders, lines, profs, imgs] = await Promise.all([
+  const [cats, parts, stock, costs, orders, lines, profs, imgs, treasury] = await Promise.all([
     when(can("stock.read"), () => run(supabase.from("categories").select("*").order("sort_order").order("name"))),
     when(can("partners.read"), () => run(supabase.from("partners").select("*").eq("archived", false).order("name"))),
     when(can("stock.read"), () => rpc("stock_overview")),
@@ -56,6 +56,10 @@ export async function loadAll() {
     when(can("history.read"), () => fetchAll(() => supabase.from("order_lines").select("*").order("id"))),
     when(can("stock.read", "history.read"), () => run(supabase.from("profiles").select("id,display_name"))),
     when(can("stock.read"), () => run(supabase.from("items").select("id,image_path"))),
+    when(can("costs.read"), () => supabase.from("treasury_settings").select("opening_cash").maybeSingle().then(({data, error}) => {
+      if (error) { console.warn("Erreur treasury_settings:", error.message); return null; }
+      return data;
+    })),
   ]);
   const imgOf = Object.fromEntries(imgs.map(i => [i.id, i.image_path]));
 
@@ -88,6 +92,7 @@ export async function loadAll() {
   return {
     items, categoryRows: cats, categories: cats.map(c => c.name), orders: mapped.reverse(),
     partners: parts.map(p => ({ id: p.id, name: p.name, supplier: p.is_supplier, client: p.is_client, note: p.note || "", image: imgUrl(p.image_path) })),
+    openingCash: num(treasury?.opening_cash) ?? 0,
   };
 }
 
@@ -120,6 +125,9 @@ export async function createItem(i, categoryId, file) {
   await run(supabase.from("item_costs").insert({
     item_id: id, last_buy_price: i.buy, tax_deductible: i.taxDeductible, deduction_rate: i.taxDeductible ? i.taxRate : null }));
 }
+
+// --- Trésorerie
+export const setOpeningCash = amount => rpc("set_opening_cash", { p_amount: amount });
 
 // --- Impôts (RPC existantes, pas encore branchées sur l'UI)
 export const taxOverview = (from, to = null) => rpc("tax_overview", { p_from: from, p_to: to });
