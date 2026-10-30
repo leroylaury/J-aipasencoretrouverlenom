@@ -2,8 +2,8 @@ import { createClient } from
     "https://esm.sh/@supabase/supabase-js@2";
 
 // Informations publiques du projet Supabase
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_KEY;
+const SUPABASE_URL = "https://jtasqbcdkzocinxvtujs.supabase.co";
+const SUPABASE_KEY = "psb_publishable_nRv-Tfo3J9UE5hm0qLJT0A_i116YPuh";
 
 export const supabase = createClient(
   SUPABASE_URL,
