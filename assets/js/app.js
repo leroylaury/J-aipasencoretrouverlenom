@@ -169,7 +169,16 @@ function renderPartners() {
   const query = (document.getElementById('partnerSearch')?.value || '').toLowerCase();
   const rows = state.partners.filter(p => p.name.toLowerCase().includes(query));
   document.getElementById('partnerCount').textContent = `${rows.length} PARTENAIRE${rows.length>1?'S':''}`;
-  document.getElementById('partnerGrid').innerHTML = rows.map(p => `<article class="partner-card"><div class="partner-head"><span class="partner-avatar">${p.image ? `<img src="${escapeHtml(p.image)}" alt="">` : initials(p.name)}</span><span><strong>${escapeHtml(p.name)}</strong><small>Partenaire commercial</small></span></div><div class="partner-flags">${p.supplier?'<span class="partner-flag">FOURNISSEUR</span>':''}${p.client?'<span class="partner-flag">CLIENT</span>':''}</div><div class="partner-note">${escapeHtml(p.note || 'Aucune note')}</div></article>`).join('') || `<div class="empty-state">Aucun partenaire trouvé.</div>`;
+  document.getElementById('partnerGrid').innerHTML = rows.map(p => `
+    <article class="partner-card">
+      <div class="partner-head">
+        <span class="partner-avatar">${p.image ? `<img src="${escapeHtml(p.image)}" alt="">` : initials(p.name)}</span>
+        <span><strong>${escapeHtml(p.name)}</strong><small>Partenaire commercial</small></span>
+        <button class="partner-settings-btn" data-partner-action="${p.id}" title="Actions">⚙️</button>
+      </div>
+      <div class="partner-flags">${p.supplier?'<span class="partner-flag">FOURNISSEUR</span>':''}${p.client?'<span class="partner-flag">CLIENT</span>':''}</div>
+      <div class="partner-note">${escapeHtml(p.note || 'Aucune note')}</div>
+    </article>`).join('') || `<div class="empty-state">Aucun partenaire trouvé.</div>`;
 }
 function renderHistory() {
   const query = (document.getElementById('historySearch')?.value || '').toLowerCase();
@@ -416,24 +425,25 @@ function openItemForm(item = null) {
     } catch(err) { toast(err.message||'Erreur serveur',true); }
   };
 }
-function openPartnerForm() {
-  openModal('Ajouter un partenaire','RÉSEAU COMMERCIAL',`
+function openPartnerForm(partner = null) {
+  const isEdit = !!partner;
+  openModal(isEdit ? 'Modifier le partenaire' : 'Ajouter un partenaire','RÉSEAU COMMERCIAL',`
     <form id="partnerForm">
-      <div class="field full"><label for="partnerName">NOM DU PARTENAIRE</label><input id="partnerName" maxlength="100" placeholder="Ex. : Société Martin" required></div>
+      <div class="field full"><label for="partnerName">NOM DU PARTENAIRE</label><input id="partnerName" maxlength="100" placeholder="Ex. : Société Martin" required value="${isEdit ? escapeHtml(partner.name) : ''}"></div>
       <div class="field full">
         <label>IMAGE DU PARTENAIRE</label>
         <div style="display:flex;gap:12px;align-items:center">
-          <div class="img-field-preview" id="partnerImgPreview"><span>?</span></div>
+          <div class="img-field-preview" id="partnerImgPreview">${isEdit && partner.image ? `<img src="${escapeHtml(partner.image)}">` : '<span>?</span>'}</div>
           <input id="partnerImageFile" type="file" accept="image/*" style="font-size:11px;color:#6e767e">
         </div>
       </div>
-      <div class="field full"><label for="partnerNote">NOTE</label><input id="partnerNote" maxlength="180" placeholder="Contact, pseudo en jeu, remarque..."></div>
-      <div class="field"><label>TYPE DE PARTENAIRE</label><div style="display:flex;gap:16px;flex-wrap:wrap;color:#cbd2d2;font-size:11px"><label><input id="partnerSupplier" type="checkbox"> Fournisseur</label><label><input id="partnerClient" type="checkbox"> Client</label></div></div>
-      <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelPartner">Annuler</button><button class="btn btn-primary" type="submit">Ajouter le partenaire</button></div>
+      <div class="field full"><label for="partnerNote">NOTE</label><input id="partnerNote" maxlength="180" placeholder="Contact, pseudo en jeu, remarque..." value="${isEdit ? escapeHtml(partner.note) : ''}"></div>
+      <div class="field"><label>TYPE DE PARTENAIRE</label><div style="display:flex;gap:16px;flex-wrap:wrap;color:#cbd2d2;font-size:11px"><label><input id="partnerSupplier" type="checkbox" ${isEdit && partner.supplier ? 'checked' : ''}> Fournisseur</label><label><input id="partnerClient" type="checkbox" ${isEdit && partner.client ? 'checked' : ''}> Client</label></div></div>
+      <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelPartner">Annuler</button><button class="btn btn-primary" type="submit">${isEdit ? 'Enregistrer les modifications' : 'Ajouter le partenaire'}</button></div>
     </form>`);
   document.getElementById('cancelPartner').onclick=closeModal;
 
-  let imageData = null;
+  let imageData = isEdit ? partner.image : null;
   let imageFile = null;
   document.getElementById('partnerImageFile').onchange = e => {
     const file = e.target.files[0];
@@ -454,9 +464,20 @@ function openPartnerForm() {
     const name=document.getElementById('partnerName').value.trim();
     const supplier=document.getElementById('partnerSupplier').checked;
     const client=document.getElementById('partnerClient').checked;
+    const note=document.getElementById('partnerNote').value.trim();
     if(!supplier&&!client)return toast('Choisissez fournisseur et/ou client.',true);
-    if(state.partners.some(p=>p.name.toLowerCase()===name.toLowerCase()))return toast('Ce partenaire existe déjà.',true);
-    try { await api.createPartner({name,supplier,client,note:document.getElementById('partnerNote').value.trim()}, imageFile); await refresh(); closeModal(); toast('Partenaire ajouté.'); }
+    if(!isEdit && state.partners.some(p=>p.name.toLowerCase()===name.toLowerCase()))return toast('Ce partenaire existe déjà.',true);
+    try {
+      if (isEdit) {
+        await api.updatePartner(partner.id, {name, supplier, client, note}, imageFile);
+        toast('Partenaire mis à jour.');
+      } else {
+        await api.createPartner({name,supplier,client,note}, imageFile);
+        toast('Partenaire ajouté.');
+      }
+      await refresh();
+      closeModal();
+    }
     catch(err) { toast(err.message||'Erreur serveur',true); }
   };
 }
@@ -580,6 +601,38 @@ document.addEventListener('click',e=>{
             await refresh();
             closeModal();
             toast(res === 'archived' ? 'Article archivé (utilisé dans l\'historique).' : 'Article supprimé.');
+          }
+          catch(e) { toast(e.message||'Erreur serveur', true); }
+        }
+      };
+    }
+    return;
+  }
+  const partnerBtn=e.target.closest('[data-partner-action]');
+  if(partnerBtn){
+    const p=state.partners.find(x=>x.id===partnerBtn.dataset.partnerAction);
+    if(!p)return;
+    const canManage = api.can("partners.manage");
+    openModal(p.name,'ACTION PARTENAIRE',`
+      <div class="modal-actions-grid">
+        <button class="btn btn-secondary" id="partnerBuy">Enregistrer un achat</button>
+        <button class="btn btn-primary" id="partnerSell">Créer une vente</button>
+        ${canManage ? `
+          <button class="btn btn-ghost" id="partnerEdit">Modifier le partenaire</button>
+          <button class="btn btn-danger" id="partnerDelete">Supprimer le partenaire</button>
+        ` : ''}
+      </div>`);
+    document.getElementById('partnerBuy').onclick=()=>{ closeModal(); openOrderForm('achat'); setTimeout(()=>document.getElementById('orderPartner').value=p.id,10); };
+    document.getElementById('partnerSell').onclick=()=>{ closeModal(); openOrderForm('vente'); setTimeout(()=>document.getElementById('orderPartner').value=p.id,10); };
+    if (canManage) {
+      document.getElementById('partnerEdit').onclick=()=>openPartnerForm(p);
+      document.getElementById('partnerDelete').onclick=async ()=>{
+        if(confirm(`Supprimer/archiver le partenaire "${p.name}" ?`)) {
+          try {
+            const res = await api.deletePartner(p.id);
+            await refresh();
+            closeModal();
+            toast(res === 'archived' ? 'Partenaire archivé (utilisé dans l\'historique).' : 'Partenaire supprimé.');
           }
           catch(e) { toast(e.message||'Erreur serveur', true); }
         }

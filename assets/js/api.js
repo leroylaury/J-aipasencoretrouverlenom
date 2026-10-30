@@ -49,7 +49,7 @@ export async function loadAll() {
   const when = (ok, f) => (ok ? f() : Promise.resolve([]));
   const [cats, parts, stock, costs, orders, lines, profs, imgs, treasury] = await Promise.all([
     when(can("stock.read"), () => run(supabase.from("categories").select("*").order("sort_order").order("name"))),
-    when(can("partners.read"), () => run(supabase.from("partners").select("*").eq("archived", false).order("name"))),
+    when(can("partners.read"), () => run(supabase.from("partners").select("*").order("name"))),
     when(can("stock.read"), () => rpc("stock_overview")),
     when(can("costs.read"), () => run(supabase.from("item_costs").select("*"))),
     when(can("history.read"), () => fetchAll(() => supabase.from("orders").select("*").order("created_at"))),
@@ -66,6 +66,8 @@ export async function loadAll() {
   const catName = Object.fromEntries(cats.map(c => [c.id, c.name]));
   const cost = Object.fromEntries(costs.map(c => [c.item_id, c]));
   const partnerName = Object.fromEntries(parts.map(p => [p.id, p.name]));
+  const toPartner = p => ({ id: p.id, name: p.name, supplier: p.is_supplier, client: p.is_client,
+                            note: p.note || "", image: imgUrl(p.image_path) });
   const who = Object.fromEntries(profs.map(p => [p.id, p.display_name]));
 
   const items = stock.filter(s => !s.archived).map(s => ({
@@ -91,7 +93,8 @@ export async function loadAll() {
 
   return {
     items, categoryRows: cats, categories: cats.map(c => c.name), orders: mapped.reverse(),
-    partners: parts.map(p => ({ id: p.id, name: p.name, supplier: p.is_supplier, client: p.is_client, note: p.note || "", image: imgUrl(p.image_path) })),
+    partners: parts.filter(p => !p.archived).map(toPartner),
+    archivedPartners: parts.filter(p => p.archived).map(toPartner),
     openingCash: num(treasury?.opening_cash) ?? 0,
   };
 }
@@ -156,6 +159,33 @@ export async function deleteItem(id) {
   return "deleted";
 }
 export const deleteCategory = id => run(supabase.from("categories").delete().eq("id", id));
+
+export const setPartnerArchived = (id, archived) =>
+  run(supabase.from("partners").update({ archived }).eq("id", id));
+
+export async function updatePartner(id, p, file) {
+  const updateData = { name: p.name, is_supplier: p.supplier, is_client: p.client, note: p.note || null };
+  if (file) {
+    updateData.image_path = await uploadImage("partners", file);
+  }
+  try {
+    const { data: old } = await supabase.from("partners").select("image_path").eq("id", id).single();
+    await run(supabase.from("partners").update(updateData).eq("id", id));
+    if (file && old?.image_path) dropImage(old.image_path);
+  } catch (e) { if (updateData.image_path) dropImage(updateData.image_path); throw e; }
+}
+export async function deletePartner(id) {
+  const row = await run(supabase.from("partners").select("image_path").eq("id", id).maybeSingle());
+  const { data, error } = await supabase.from("partners").delete().eq("id", id).select("id");
+  if (error?.code === "23503") {              // utilisé dans des bons : on archive
+    await setPartnerArchived(id, true);
+    return "archived";
+  }
+  if (error) throw error;
+  if (!data.length) throw new Error("Suppression refusée (droit insuffisant ou partenaire introuvable)");
+  dropImage(row?.image_path);                 // nettoie le fichier dans Storage
+  return "deleted";
+}
 
 // --- Trésorerie
 export const setOpeningCash = amount => rpc("set_opening_cash", { p_amount: amount });
