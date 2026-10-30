@@ -3,7 +3,7 @@ import { createClient } from
 
 // Informations publiques du projet Supabase
 const SUPABASE_URL = "https://jtasqbcdkzocinxvtujs.supabase.co";
-const SUPABASE_KEY = "psb_publishable_nRv-Tfo3J9UE5hm0qLJT0A_i116YPuh";
+const SUPABASE_KEY = "sb_publishable_nRv-Tfo3J9UE5hm0qLJT0A_i116YPuh";
 
 export const supabase = createClient(
   SUPABASE_URL,

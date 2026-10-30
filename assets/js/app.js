@@ -6,58 +6,13 @@ const sCurrency = (val) => {
 };
 const intFmt = new Intl.NumberFormat('fr-FR');
 const today = new Date('2026-10-30T13:00:00');
-const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxx-xxxx-4xxx-yxxx-xxxxxxxx'.replace(/[xy]/g, c => (Math.random() * 16 | 0).toString(16)));
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => (Math.random() * 16 | 0).toString(16)));
 const initials = name => name.split(/\s+/).map(x => x[0]).slice(0, 2).join('').toUpperCase();
 const fmtDate = value => new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value));
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-const state = {
-  openingCash: 110900,
-  cash: 125400,
-  items: [
-    { id: 'it-steel', name: 'Acier', category: 'Métaux', stock: 75, buy: 180, sale: 250, glyph: 'AC', image: null, taxDeductible: true, taxRate: 20 },
-    { id: 'it-alum', name: 'Aluminium', category: 'Métaux', stock: 64, buy: 145, sale: 210, glyph: 'AL', image: null, taxDeductible: true, taxRate: 20 },
-    { id: 'it-copper', name: 'Cuivre', category: 'Métaux', stock: 38, buy: 220, sale: 310, glyph: 'CU', image: null, taxDeductible: false, taxRate: 0 },
-    { id: 'it-cement', name: 'Ciment', category: 'Matériaux', stock: 45, buy: 60, sale: 95, glyph: 'CI', image: null, taxDeductible: true, taxRate: 5.5 },
-    { id: 'it-wood', name: 'Bois traité', category: 'Matériaux', stock: 26, buy: 90, sale: 140, glyph: 'BT', image: null, taxDeductible: false, taxRate: 0 }
-  ],
-  categories: ['Métaux', 'Matériaux', 'Énergie', 'Divers'],
-  partners: [
-    { id: 'p-nord', name: 'Nord Métaux', supplier: true, client: false, note: 'Fournisseur principal · Secteur nord', image: null },
-    { id: 'p-industries', name: 'Industries Martin', supplier: true, client: true, note: 'Compte professionnel', image: null },
-    { id: 'p-btp', name: 'BTP Services', supplier: false, client: true, note: 'Client régulier', image: null },
-    { id: 'p-energie', name: 'Énergie & Co', supplier: true, client: false, note: 'Approvisionnement énergie', image: null }
-  ],
-  orders: [],
-  movements: []
-};
+const state = { openingCash: 0, cash: 0, items: [], categories: [], categoryRows: [], partners: [], orders: [], movements: [] };
 
-function seedData() {
-  const samples = [
-    { ref:'A-102', type:'vente', status:'confirme', partner:'BTP Services', date:'2026-10-30T10:42:00', createdBy:'Jean Dupont', lines:[['Aluminium',10,250]] },
-    { ref:'A-101', type:'achat', status:'confirme', partner:'Nord Métaux', date:'2026-10-30T09:15:00', createdBy:'Jean Dupont', lines:[['Acier',20,260]] },
-    { ref:'V-098', type:'vente', status:'prevision', partner:'Industries Martin', date:'2026-10-29T16:30:00', createdBy:'Marie Laurent', lines:[['Cuivre',8,310]] },
-    { ref:'A-097', type:'achat', status:'confirme', partner:'Énergie & Co', date:'2026-10-28T14:20:00', createdBy:'Jean Dupont', lines:[['Ciment',20,60]] },
-    { ref:'V-096', type:'vente', status:'confirme', partner:'Industries Martin', date:'2026-10-27T11:05:00', createdBy:'Marie Laurent', lines:[['Acier',30,250]] },
-    { ref:'A-095', type:'achat', status:'confirme', partner:'Nord Métaux', date:'2026-10-24T08:50:00', createdBy:'Jean Dupont', lines:[['Aluminium',20,145]] },
-    { ref:'V-094', type:'vente', status:'prevision', partner:'BTP Services', date:'2026-10-23T15:40:00', createdBy:'Marie Laurent', lines:[['Bois traité',12,140]] },
-    { ref:'A-093', type:'achat', status:'confirme', partner:'Industries Martin', date:'2026-10-21T10:15:00', createdBy:'Jean Dupont', lines:[['Cuivre',20,220]] },
-    { ref:'V-092', type:'vente', status:'confirme', partner:'BTP Services', date:'2026-10-20T12:10:00', createdBy:'Jean Dupont', lines:[['Ciment',15,95]] }
-  ];
-  state.orders = samples.map((s, i) => ({
-    id: uid(), ref: s.ref, type: s.type, status: s.status, partner: s.partner, date: s.date, createdBy: s.createdBy,
-    lines: s.lines.map(([name, quantity, unitPrice]) => {
-      const item = state.items.find(x => x.name === name);
-      return { itemId: item.id, quantity, unitPrice, deductionRate: s.type === 'achat' && item.taxDeductible ? item.taxRate : 0 };
-    }),
-    version: 1
-  }));
-  const buyTotals = state.orders.filter(o => o.type === 'achat' && o.status === 'confirme').reduce((a,o) => a + orderTotal(o), 0);
-  const saleTotals = state.orders.filter(o => o.type === 'vente' && o.status === 'confirme').reduce((a,o) => a + orderTotal(o), 0);
-  // Historical demo figures are preserved as an opening balance plus confirmed demo operations.
-  state.openingCash = 110900 + (buyTotals - 18200) - (saleTotals - 32700);
-  rebuildMovements();
-}
 function orderTotal(order) { return order.lines.reduce((sum, line) => sum + Math.ceil(line.quantity * line.unitPrice), 0); }
 function itemFor(id) { return state.items.find(item => item.id === id); }
 function rebuildMovements() {
@@ -67,7 +22,6 @@ function rebuildMovements() {
   }));
   state.cash = state.openingCash + state.movements.reduce((sum,m) => sum + (m.type === 'vente' ? m.amount : -m.amount), 0);
 }
-seedData();
 
 const pageLabels = { dashboard:'VUE GÉNÉRALE', stock:'INVENTAIRE', operations:'OPÉRATIONS', partners:'PARTENAIRES', history:'HISTORIQUE', finance:'TRÉSORERIE', tax:'IMPÔTS' };
 function showPage(page) {
@@ -278,7 +232,7 @@ function openOrderForm(type) {
   openModal(isBuy?'Enregistrer un achat':'Créer une vente','NOUVEAU BON · '+(isBuy?'APPROVISIONNEMENT':'COMMERCE'), `
     <form id="orderForm">
       <input type="hidden" id="orderType" value="${type}">
-      <div class="form-grid"><div class="field full"><label for="orderPartner">PARTENAIRE</label><select id="orderPartner">${partnerOptions(type)}</select></div><div class="field"><label for="orderDate">DATE DE L'OPÉRATION</label><input id="orderDate" type="date" value="2026-10-30" required></div><div class="field"><label>STATUT INITIAL</label><input value="${isBuy?'Confirmé immédiatement':'En prévision'}" disabled></div></div>
+      <div class="form-grid"><div class="field full"><label for="orderPartner">PARTENAIRE</label><select id="orderPartner">${partnerOptions(type)}</select></div><div class="field"><label for="orderDate">DATE DE L'OPÉRATION</label><input id="orderDate" type="date" value="${new Date().toLocaleDateString('sv-SE')}" max="${new Date().toLocaleDateString('sv-SE')}" ${type==='vente'?'disabled':'required'}></div><div class="field"><label>STATUT INITIAL</label><input value="${isBuy?'Confirmé immédiatement':'En prévision'}" disabled></div></div>
       <div class="line-builder"><div class="line-builder-head"><strong>Articles du bon</strong><span class="cell-sub">PRIX UNITAIRES EN s</span></div><div class="line-list" id="lineList">${lineMarkup(type)}</div><button type="button" class="add-line" id="addLine">＋ Ajouter une ligne</button></div>
       <div class="order-total"><span>TOTAL DU BON <small class="cell-sub"> · arrondi supérieur par ligne</small></span><strong id="orderTotalPreview">0,00 s</strong></div>
       <p class="page-footnote">${isBuy?'Le bon sera confirmé immédiatement, la trésorerie diminuée et les quantités ajoutées au stock.':'La vente sera enregistrée en prévision. Le stock et la trésorerie ne bougeront qu’à la confirmation.'}</p>
@@ -308,21 +262,15 @@ function nextRef(type) {
   const max=state.orders.filter(o=>o.ref.startsWith(prefix+'-')).map(o=>Number(o.ref.split('-')[1])).reduce((a,b)=>Math.max(a,b),90);
   return `${prefix}-${String(max+1).padStart(3,'0')}`;
 }
-function submitOrder(type) {
+async function submitOrder(type) {
   const lines=collectLines();
   if(!lines.length || lines.some(l=>!l.itemId || !Number.isInteger(l.quantity) || l.quantity<=0 || !Number.isFinite(l.unitPrice) || l.unitPrice<0)) return toast('Vérifiez les articles, quantités et prix.',true);
-  const enrichedLines = lines.map(l => {
-    const item = itemFor(l.itemId);
-    return { ...l, deductionRate: type === 'achat' && item.taxDeductible ? item.taxRate : 0 };
-  });
-  const order={id:uid(),ref:nextRef(type),type,status:type==='achat'?'confirme':'prevision',partner:state.partners.find(p=>p.id===document.getElementById('orderPartner').value)?.name || '',date:new Date(document.getElementById('orderDate').value+'T12:00:00').toISOString(),createdBy:'Jean Dupont',lines:enrichedLines,version:1};
-  if(type==='achat') {
-    const cost=orderTotal(order);
-    if(cost>state.cash) return toast('Trésorerie insuffisante pour cet achat.',true);
-    lines.forEach(l=>{const item=itemFor(l.itemId);item.stock+=l.quantity;item.buy=l.unitPrice;});
-  }
-  state.orders.unshift(order); rebuildMovements(); closeModal(); renderAll();
-  toast(type==='achat'?'Achat confirmé : stock et trésorerie mis à jour.':'Prévision de vente créée. Le stock reste inchangé.');
+  try {
+    await api.saveOrder({ id:uid(), type, partnerId:document.getElementById('orderPartner').value, lines,
+      date: type==='achat' ? document.getElementById('orderDate').value : null });
+    await refresh(); closeModal();
+    toast(type==='achat'?'Achat confirmé : stock mis à jour.':'Prévision de vente créée. Le stock reste inchangé.');
+  } catch(e) { toast(e.message || 'Erreur serveur', true); }
 }
 function openItemForm() {
   openModal('Nouvel article','CATALOGUE PRODUITS',`
@@ -356,8 +304,11 @@ function openItemForm() {
   document.getElementById('cancelItem').onclick=closeModal;
 
   let imageData = null;
+  let imageFile = null;
   document.getElementById('itemImageFile').onchange = e => {
     const file = e.target.files[0];
+    if (file && file.size > 2 * 1024 * 1024) { e.target.value = ''; return toast('Image trop lourde (2 Mo maximum).', true); }
+    imageFile = file || null;
     if (file) {
       const reader = new FileReader();
       reader.onload = ev => {
@@ -370,7 +321,7 @@ function openItemForm() {
 
   const taxable = document.getElementById('itemTaxable');
   taxable.onchange = () => document.getElementById('taxRateWrap').style.display = taxable.checked ? 'flex' : 'none';
-  document.getElementById('itemForm').onsubmit = e => {
+  document.getElementById('itemForm').onsubmit = async e => {
     e.preventDefault();
     const newItem = {
       id: 'it-' + uid().slice(0,8),
@@ -384,8 +335,8 @@ function openItemForm() {
       taxDeductible: taxable.checked,
       taxRate: taxable.checked ? Number(document.getElementById('itemTaxRate').value) : 0
     };
-    state.items.push(newItem);
-    closeModal(); renderAll(); toast('Article ajouté au catalogue.');
+    try { await api.createItem(newItem, state.categoryRows.find(c=>c.name===newItem.category)?.id, imageFile); await refresh(); closeModal(); toast('Article ajouté au catalogue.'); }
+    catch(err) { toast(err.message||'Erreur serveur',true); }
   };
 }
 function openPartnerForm() {
@@ -406,8 +357,11 @@ function openPartnerForm() {
   document.getElementById('cancelPartner').onclick=closeModal;
 
   let imageData = null;
+  let imageFile = null;
   document.getElementById('partnerImageFile').onchange = e => {
     const file = e.target.files[0];
+    if (file && file.size > 2 * 1024 * 1024) { e.target.value = ''; return toast('Image trop lourde (2 Mo maximum).', true); }
+    imageFile = file || null;
     if (file) {
       const reader = new FileReader();
       reader.onload = ev => {
@@ -418,15 +372,15 @@ function openPartnerForm() {
     }
   };
 
-  document.getElementById('partnerForm').onsubmit=e=>{
+  document.getElementById('partnerForm').onsubmit=async e=>{
     e.preventDefault();
     const name=document.getElementById('partnerName').value.trim();
     const supplier=document.getElementById('partnerSupplier').checked;
     const client=document.getElementById('partnerClient').checked;
     if(!supplier&&!client)return toast('Choisissez fournisseur et/ou client.',true);
     if(state.partners.some(p=>p.name.toLowerCase()===name.toLowerCase()))return toast('Ce partenaire existe déjà.',true);
-    state.partners.push({id:uid(),name,supplier,client,note:document.getElementById('partnerNote').value.trim(),image:imageData});
-    closeModal();renderAll();toast('Partenaire ajouté au catalogue de démonstration.');
+    try { await api.createPartner({name,supplier,client,note:document.getElementById('partnerNote').value.trim()}, imageFile); await refresh(); closeModal(); toast('Partenaire ajouté.'); }
+    catch(err) { toast(err.message||'Erreur serveur',true); }
   };
 }
 
@@ -438,36 +392,33 @@ function openCategoryForm() {
       <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelCat">Annuler</button><button class="btn btn-primary" type="submit">Créer la catégorie</button></div>
     </form>`);
   document.getElementById('cancelCat').onclick = closeModal;
-  document.getElementById('categoryForm').onsubmit = e => {
+  document.getElementById('categoryForm').onsubmit = async e => {
     e.preventDefault();
     const name = document.getElementById('catName').value.trim();
     if (state.categories.some(c => c.toLowerCase() === name.toLowerCase())) return toast('Cette catégorie existe déjà.', true);
-    state.categories.push(name);
-    closeModal(); renderAll(); toast('Catégorie ajoutée.');
+    try { await api.createCategory(name); await refresh(); closeModal(); toast('Catégorie ajoutée.'); }
+    catch(err) { toast(err.message||'Erreur serveur',true); }
   };
 }
 function openOrderDetails(id) {
   const order=state.orders.find(o=>o.id===id); if(!order)return;
   const lines=order.lines.map(l=>{const item=itemFor(l.itemId);return `<tr><td>${escapeHtml(item?.name||'Article')}</td><td>${l.quantity}</td><td>${eur.format(l.unitPrice)}</td><td class="align-right">${eur.format(Math.ceil(l.quantity*l.unitPrice))}</td></tr>`;}).join('');
   let buttons='';
-  if(order.type==='vente'&&order.status==='prevision') buttons=`<button class="btn btn-primary" id="confirmSale">Confirmer la livraison</button><button class="btn btn-secondary" id="cancelSale">Annuler le bon</button>`;
+  if(order.type==='vente'&&order.status==='prevision'&&api.can('vente.manage')) buttons=`<button class="btn btn-primary" id="confirmSale">Confirmer la livraison</button><button class="btn btn-secondary" id="cancelSale">Annuler le bon</button>`;
   openModal(`Bon ${order.ref}`,'DÉTAIL DE L’OPÉRATION',`<div class="detail-list"><div class="detail-box"><small>TYPE</small><strong>${order.type==='achat'?'Achat':'Vente'}</strong></div><div class="detail-box"><small>STATUT</small>${statusBadge(order.status)}</div><div class="detail-box"><small>PARTENAIRE</small><strong>${partnerName(order.partner)}</strong></div><div class="detail-box"><small>DATE</small><strong>${fmtDate(order.date)}</strong></div></div><div class="table-scroll"><table style="min-width:420px"><thead><tr><th>ARTICLE</th><th>QTÉ</th><th>PRIX UNIT.</th><th class="align-right">TOTAL</th></tr></thead><tbody>${lines}</tbody></table></div><div class="order-total"><span>TOTAL DU BON</span><strong>${eur.format(orderTotal(order))}</strong></div><p class="page-footnote">Créé par ${escapeHtml(order.createdBy)} · Version ${order.version}</p><div class="modal-actions"><button class="btn btn-secondary" id="closeDetails">Fermer</button>${buttons}</div>`);
   document.getElementById('closeDetails').onclick=closeModal;
   document.getElementById('confirmSale')?.addEventListener('click',()=>confirmSale(order.id));
   document.getElementById('cancelSale')?.addEventListener('click',()=>cancelSale(order.id));
 }
-function confirmSale(id) {
-  const order=state.orders.find(o=>o.id===id);if(!order||order.status!=='prevision')return;
-  const needed={};order.lines.forEach(l=>needed[l.itemId]=(needed[l.itemId]||0)+l.quantity);
-  const shortage=Object.entries(needed).find(([itemId,qty])=>!itemFor(itemId)||itemFor(itemId).stock<qty);
-  if(shortage){const item=itemFor(shortage[0]);return toast(`Stock insuffisant pour ${item?.name||'un article'} : ${item?.stock??0} disponible(s).`,true);}
-  Object.entries(needed).forEach(([itemId,qty])=>itemFor(itemId).stock-=qty);
-  order.status='confirme';order.version++;order.confirmedAt=new Date().toISOString();
-  rebuildMovements();closeModal();renderAll();toast('Vente confirmée : stock et trésorerie mis à jour.');
+async function confirmSale(id) {
+  const o=state.orders.find(x=>x.id===id); if(!o||o.status!=='prevision') return;
+  try { await api.confirmSale(id,o.version); await refresh(); closeModal(); toast('Vente confirmée : stock mis à jour.'); }
+  catch(e) { toast(e.message||'Erreur serveur',true); }
 }
-function cancelSale(id) {
-  const order=state.orders.find(o=>o.id===id);if(!order||order.status!=='prevision')return;
-  order.status='annule';order.version++;closeModal();renderAll();toast('Bon de vente annulé.');
+async function cancelSale(id) {
+  const o=state.orders.find(x=>x.id===id); if(!o||o.status!=='prevision') return;
+  try { await api.cancelOrder(id,o.version); await refresh(); closeModal(); toast('Bon de vente annulé.'); }
+  catch(e) { toast(e.message||'Erreur serveur',true); }
 }
 
 document.addEventListener('click',e=>{
@@ -478,17 +429,47 @@ document.addEventListener('click',e=>{
 document.getElementById('operationFilter')?.addEventListener('change',renderOperations);
 ['partnerSearch'].forEach(id=>document.getElementById(id)?.addEventListener('input',renderPartners));
 ['historySearch','historyType','historyStatus'].forEach(id=>document.getElementById(id)?.addEventListener(id==='historySearch'?'input':'change',renderHistory));
-document.getElementById('helpBtn').addEventListener('click',()=>toast('Prototype visuel : les données sont fictives et stockées uniquement en mémoire pendant la session.'));
+document.getElementById('helpBtn').addEventListener('click',()=>toast('Données synchronisées avec Supabase.'));
 renderAll();
 
 
 import { signInWithDiscord, getCurrentSession, signOut, syncDiscordIdentity } from "./auth.js";
+import * as api from "./api.js";
+
+async function refresh() {
+  const d = await api.loadAll();
+  Object.assign(state, d);
+  rebuildMovements(); renderAll();
+}
+
+const NEEDS = { stock:['stock.read'], operations:['achat.create','vente.manage'], partners:['partners.read'],
+  history:['history.read'], finance:['history.read'], tax:['tax.read'] };
+const ACTIONS = { 'new-buy':['achat.create'], 'new-sale':['vente.manage'], 'new-partner':['partners.manage'],
+  'new-item':['catalog.manage'], 'new-category':['catalog.manage'] };
+let pollTimer = null;
+
+async function boot(session) {
+  clearInterval(pollTimer);
+  if (!session?.user) return renderAll();
+  const { roles } = await api.loadPermissions();
+  document.querySelectorAll('[data-page]').forEach(el => { const n = NEEDS[el.dataset.page]; if (n) el.hidden = !api.can(...n); });
+  document.querySelectorAll('[data-action]').forEach(el => { const n = ACTIONS[el.dataset.action]; if (n) el.hidden = !api.can(...n); });
+  document.getElementById('rolePending')?.remove();
+  if (!roles.length) {   // le bot Discord n'a pas encore attribué de rôle : on réessaie toutes les 20 s
+    document.getElementById('page-dashboard').insertAdjacentHTML('afterbegin',
+      '<div id="rolePending" style="padding:14px 18px;margin-bottom:16px;border:1px solid currentColor;border-radius:12px">Compte connecté, en attente de l’attribution de vos rôles Discord. Cette page se mettra à jour automatiquement.</div>');
+    pollTimer = setInterval(() => boot(session), 20000);
+    return renderAll();
+  }
+  try { await refresh(); } catch (e) { toast(e.message || 'Chargement impossible', true); }
+}
 
 async function initAuth() {
   const session = await getCurrentSession();
   if (session?.user) {
     await syncDiscordIdentity();
   }
+  await boot(session);
   const updateUI = (user) => {
     const loginBtn = document.getElementById("discord-login");
     const loginBtnTop = document.getElementById("discord-login-top");
