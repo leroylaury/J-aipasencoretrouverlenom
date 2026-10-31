@@ -10,16 +10,22 @@ const initials = name => name.split(/\s+/).map(x => x[0]).slice(0, 2).join('').t
 const fmtDate = value => new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value));
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-const state = { openingCash: 0, cash: 0, items: [], categories: [], categoryRows: [], partners: [], orders: [], movements: [] };
+const state = { openingCash: 0, cash: 0, items: [], categories: [], categoryRows: [], partners: [], orders: [], movements: [], cashFlows: [] };
 
 function orderTotal(order) { return order.lines.reduce((sum, line) => sum + Math.ceil(line.quantity * line.unitPrice), 0); }
 function itemFor(id) { return state.items.find(item => item.id === id); }
 function rebuildMovements() {
-  state.movements = state.orders.filter(o => o.status === 'confirme').map(o => ({
+  const fromOrders = state.orders.filter(o => o.status === 'confirme').map(o => ({
     id: o.id, ref: o.ref, label: `${o.type === 'achat' ? 'Achat' : 'Vente'} · ${o.partner}`,
-    type: o.type, amount: orderTotal(o), date: o.date
+    type: o.type, inflow: o.type === 'vente', amount: orderTotal(o), date: o.date
   }));
-  state.cash = state.openingCash + state.movements.reduce((sum,m) => sum + (m.type === 'vente' ? m.amount : -m.amount), 0);
+  // Flux hors impôts : comptent dans la trésorerie, jamais dans le calcul fiscal (calculé côté serveur sur les bons uniquement)
+  const fromFlows = (state.cashFlows || []).map(f => ({
+    id: f.id, ref: 'FLUX', label: f.note ? `${f.label} · ${f.note}` : f.label, shortLabel: f.label,
+    type: 'flux', flow: true, inflow: f.direction === 'entree', amount: f.amount, date: `${f.date}T12:00:00`
+  }));
+  state.movements = [...fromOrders, ...fromFlows];
+  state.cash = state.openingCash + state.movements.reduce((sum,m) => sum + (m.inflow ? m.amount : -m.amount), 0);
 }
 
 const pageLabels = { dashboard:'VUE GÉNÉRALE', stock:'INVENTAIRE', operations:'OPÉRATIONS', partners:'PARTENAIRES', history:'HISTORIQUE', finance:'TRÉSORERIE', tax:'IMPÔTS' };
@@ -30,6 +36,7 @@ function showPage(page) {
   document.getElementById('crumbLabel').textContent = pageLabels[page];
   window.scrollTo({ top: 0, behavior: 'smooth' });
   renderAll();
+  if (page === 'tax') refreshTax();
 }
 document.addEventListener('click', e => {
   const pageButton = e.target.closest('[data-page]');
@@ -37,6 +44,7 @@ document.addEventListener('click', e => {
   const actionButton = e.target.closest('[data-action]');
   if (actionButton) {
     if (actionButton.dataset.action === 'edit-treasury') { openTreasuryForm(); return; }
+    if (actionButton.dataset.action === 'new-flow') { openCashFlowForm(); return; }
     openAction(actionButton.dataset.action);
     return;
   }
@@ -99,8 +107,8 @@ function renderCashflowChart() {
     return {
       label: day.toLocaleDateString('fr-FR', { weekday: 'short' }).toUpperCase().replace('.', ''),
       fullLabel: day.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
-      in: dayMovements.filter(m => m.type === 'vente').reduce((sum, m) => sum + m.amount, 0),
-      out: dayMovements.filter(m => m.type === 'achat').reduce((sum, m) => sum + m.amount, 0)
+      in: dayMovements.filter(m => m.inflow).reduce((sum, m) => sum + m.amount, 0),
+      out: dayMovements.filter(m => !m.inflow).reduce((sum, m) => sum + m.amount, 0)
     };
   });
 
@@ -244,34 +252,23 @@ function bindHistoryEvents() {
 }
 function renderFinance() {
   rebuildMovements();
-  const incoming = state.movements.filter(m=>m.type==='vente').reduce((a,m)=>a+m.amount,0);
-  const outgoing = state.movements.filter(m=>m.type==='achat').reduce((a,m)=>a+m.amount,0);
+  const incoming = state.movements.filter(m=>m.inflow).reduce((a,m)=>a+m.amount,0);
+  const outgoing = state.movements.filter(m=>!m.inflow).reduce((a,m)=>a+m.amount,0);
   document.getElementById('financeCash').textContent = sCurrency(state.cash);
   document.getElementById('financeIn').textContent = sCurrency(incoming);
   document.getElementById('financeOut').textContent = sCurrency(outgoing);
-  document.getElementById('financeRows').innerHTML = [...state.movements].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(m=>`<tr><td><span class="cell-title">${escapeHtml(m.ref)}</span></td><td class="mobile-hide">${escapeHtml(m.label)}</td><td class="mobile-hide">${fmtDate(m.date)}</td><td class="align-right ${m.type==='vente'?'positive':'negative'}"><strong>${m.type==='vente'?'+':'−'} ${sCurrency(m.amount)}</strong></td></tr>`).join('') || `<tr><td colspan="4"><div class="empty-state">Aucun mouvement financier.</div></td></tr>`;
+  document.getElementById('financeRows').innerHTML = [...state.movements].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(m=>`<tr><td>${m.flow ? `<span class="type-chip flux">HORS IMPÔTS</span><div class="cell-sub mobile-only">${escapeHtml(m.shortLabel)}</div>` : `<span class="cell-title">${escapeHtml(m.ref)}</span>`}</td><td class="mobile-hide">${escapeHtml(m.label)}</td><td class="mobile-hide">${fmtDate(m.date)}</td><td class="align-right ${m.inflow?'positive':'negative'}"><strong>${m.inflow?'+':'−'} ${sCurrency(m.amount)}</strong></td><td class="align-right">${m.flow && api.can('treasury.manage') ? `<button type="button" class="row-action" data-flow-delete="${m.id}" title="Supprimer ce flux" aria-label="Supprimer ce flux">✕</button>` : ''}</td></tr>`).join('') || `<tr><td colspan="5"><div class="empty-state">Aucun mouvement financier.</div></td></tr>`;
 
   const editBtn = document.getElementById('editTreasuryBtn');
   if (editBtn) editBtn.hidden = !api.can('treasury.manage');
+  const flowBtn = document.getElementById('newFlowBtn');
+  if (flowBtn) flowBtn.hidden = !api.can('treasury.manage');
+  document.querySelectorAll('[data-flow-delete]').forEach(b => b.onclick = () => deleteFlow(b.dataset.flowDelete));
 }
-function renderTax() {
-  const taxLines = [];
-  state.orders.filter(o => o.type === 'achat' && o.status === 'confirme').forEach(o => {
-    o.lines.forEach(l => {
-      if (l.deductionRate > 0) {
-        taxLines.push({ date: o.date, item: itemFor(l.itemId)?.name || 'Article', amount: l.quantity * l.unitPrice, rate: l.deductionRate });
-      }
-    });
-  });
-  const totalAchat = state.orders.filter(o => o.type === 'achat' && o.status === 'confirme').reduce((a,o) => a + orderTotal(o), 0);
-  const totalDeduction = taxLines.reduce((a,l) => a + (l.amount * l.rate / 100), 0);
-  document.getElementById('taxTotalAchat').textContent = sCurrency(totalAchat);
-  document.getElementById('taxTotalDeduction').textContent = sCurrency(totalDeduction);
-  document.getElementById('taxNet').textContent = sCurrency(totalAchat - totalDeduction);
-  document.getElementById('taxRows').innerHTML = taxLines.sort((a,b)=>new Date(b.date)-new Date(a.date)).map(l => `<tr><td>${fmtDate(l.date)}</td><td><span class="cell-title">${escapeHtml(l.item)}</span></td><td class="align-right mobile-hide">${sCurrency(l.amount)}</td><td class="align-right desktop-only"><span class="tax-rate">${l.rate}%</span></td><td class="align-right positive"><strong>− ${sCurrency(l.amount * l.rate / 100)}</strong></td></tr>`).join('') || `<tr><td colspan="5"><div class="empty-state">Aucune déduction fiscale enregistrée.</div></td></tr>`;
-}
+function renderTax() {}
 function renderAll() { renderDashboard(); renderStock(); renderOperations(); renderPartners(); renderHistory(); renderFinance(); renderTax(); }
 
+initTax({ openModal: (...a) => openModal(...a), closeModal: () => closeModal(), toast: (...a) => toast(...a) });
 const backdrop = document.getElementById('modalBackdrop');
 const modalContent = document.getElementById('modalContent');
 function openModal(title, eyebrow, content) {
@@ -373,9 +370,10 @@ function openItemForm(item = null) {
             <label style="color:#cbd2d2"><input id="itemTaxable" type="checkbox" ${isEdit && item.taxDeductible ? 'checked' : ''}> Déductible des impôts</label>
             <div id="taxRateWrap" style="display:${isEdit && item.taxDeductible ? 'flex' : 'none'};align-items:center;gap:8px">
               <span style="color:#6e767e">Taux :</span>
-              <input id="itemTaxRate" type="number" step="0.1" value="${isEdit ? item.taxRate : 20}" style="width:70px"> <span style="color:#6e767e">%</span>
+              <input id="itemTaxRate" type="number" step="0.1" min="0" max="100" value="${isEdit ? item.taxRate : 20}" style="width:70px"> <span style="color:#6e767e">%</span>
             </div>
           </div>
+          ${isEdit ? `<p class="page-footnote">Si vous modifiez cette fiscalité, les achats de cet article déjà enregistrés cette semaine (lundi → dimanche) sont recalculés. Les semaines précédentes ne changent pas.</p>` : ''}
         </div>
       </div>
       <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelItem">Annuler</button><button class="btn btn-primary" type="submit">${isEdit ? 'Enregistrer les modifications' : 'Créer l\'article'}</button></div>
@@ -415,7 +413,19 @@ function openItemForm(item = null) {
       const catId = state.categoryRows.find(c=>c.name===itemData.category)?.id;
       if (isEdit) {
         await api.updateItem(item.id, itemData, catId, imageFile);
-        toast('Article mis à jour.');
+        const taxChanged = item.taxDeductible !== itemData.taxDeductible
+          || (itemData.taxDeductible && Number(item.taxRate) !== itemData.taxRate);
+        if (taxChanged) {
+          try {
+            const n = Number(await api.applyItemTaxToCurrentWeek(item.id)) || 0;
+            toast(n ? `Article mis à jour · ${n} ligne(s) d’achat de la semaine en cours recalculée(s).`
+                    : 'Article mis à jour (aucun achat de cet article cette semaine).');
+          } catch (taxErr) {
+            toast(`Article mis à jour, mais les achats de la semaine en cours n’ont pas été recalculés : ${taxErr.message || 'erreur serveur'}`, true);
+          }
+        } else {
+          toast('Article mis à jour.');
+        }
       } else {
         await api.createItem(itemData, catId, imageFile);
         toast('Article ajouté au catalogue.');
@@ -545,6 +555,42 @@ async function cancelSale(id) {
   catch(e) { toast(e.message||'Erreur serveur',true); }
 }
 
+function openCashFlowForm() {
+  const day = new Date().toLocaleDateString('sv-SE');
+  const flowId = uid();                         // un seul id par ouverture : un double clic ne crée pas de doublon
+  openModal('Flux hors impôts', 'TRÉSORERIE · NON COMPTABILISÉ', `
+    <form id="flowForm">
+      <div class="form-grid">
+        <div class="field full"><label for="flowLabel">LIBELLÉ</label><input id="flowLabel" maxlength="120" required placeholder="Ex. : Apport, retrait, remboursement…"></div>
+        <div class="field"><label for="flowDirection">SENS</label><select id="flowDirection"><option value="entree">Entrée d’argent</option><option value="sortie">Sortie d’argent</option></select></div>
+        <div class="field"><label for="flowAmount">MONTANT (s)</label><input id="flowAmount" type="number" min="0.01" step="0.01" required></div>
+        <div class="field"><label for="flowDate">DATE</label><input id="flowDate" type="date" value="${day}" max="${day}" required></div>
+        <div class="field full"><label for="flowNote">NOTE (FACULTATIF)</label><input id="flowNote" maxlength="180"></div>
+      </div>
+      <p class="page-footnote">Ce flux modifie la trésorerie disponible, mais n’entre dans aucun calcul d’impôt : ni chiffre d’affaires, ni déduction.</p>
+      <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelFlow">Annuler</button><button class="btn btn-primary" type="submit" id="saveFlow">Enregistrer le flux</button></div>
+    </form>`);
+  document.getElementById('cancelFlow').onclick = closeModal;
+  document.getElementById('flowForm').onsubmit = async e => {
+    e.preventDefault();
+    const amount = Number(document.getElementById('flowAmount').value);
+    const label = document.getElementById('flowLabel').value.trim();
+    if (!label || !Number.isFinite(amount) || amount <= 0) return toast('Indiquez un libellé et un montant supérieur à 0.', true);
+    const btn = document.getElementById('saveFlow'); btn.disabled = true;
+    try {
+      await api.addCashFlow({ id: flowId, direction: document.getElementById('flowDirection').value, amount, label,
+        note: document.getElementById('flowNote').value.trim(), date: document.getElementById('flowDate').value });
+      await refresh(); closeModal();
+      toast('Flux enregistré : trésorerie mise à jour (hors impôts).');
+    } catch (err) { btn.disabled = false; toast(err.message || 'Erreur serveur', true); }
+  };
+}
+async function deleteFlow(id) {
+  const f = state.cashFlows.find(x => x.id === id); if (!f) return;
+  if (!confirm(`Supprimer le flux « ${f.label} » (${f.direction === 'entree' ? '+' : '−'} ${sCurrency(f.amount)}) ? La trésorerie sera recalculée.`)) return;
+  try { await api.deleteCashFlow(id); await refresh(); toast('Flux supprimé.'); }
+  catch (err) { toast(err.message || 'Erreur serveur', true); }
+}
 function openTreasuryForm() {
   openModal('Paramètres de trésorerie', 'FINANCES COMPAGNIE', `
     <form id="treasuryForm">
@@ -661,6 +707,7 @@ renderAll();
 
 import { signInWithDiscord, getCurrentSession, signOut, syncDiscordIdentity } from "./auth.js";
 import * as api from "./api.js";
+import { initTax, refreshTax } from "./tax.js";
 
 async function refresh() {
   const d = await api.loadAll();
@@ -718,7 +765,9 @@ async function initAuth() {
         loginBtn.onclick = null;
       }
       if (loginBtnTop) {
-        loginBtnTop.innerHTML = avatarUrl ? `<img src="${avatarUrl}" alt="" style="width:100%;height:100%;border-radius:inherit;object-fit:cover">` : avatarInitials;
+        loginBtnTop.classList.remove('is-guest');
+        loginBtnTop.setAttribute('aria-label', `Connecté : ${name}`);
+        loginBtnTop.innerHTML = avatarUrl ? `<img src="${escapeHtml(avatarUrl)}" alt="" style="width:100%;height:100%;border-radius:inherit;object-fit:cover">` : avatarInitials;
         loginBtnTop.onclick = null;
       }
 
@@ -731,7 +780,9 @@ async function initAuth() {
         loginBtn.onclick = signInWithDiscord;
       }
       if (loginBtnTop) {
-        loginBtnTop.innerHTML = "?";
+        loginBtnTop.classList.add('is-guest');
+        loginBtnTop.setAttribute('aria-label', 'Se connecter avec Discord');
+        loginBtnTop.textContent = 'Connexion';
         loginBtnTop.onclick = signInWithDiscord;
       }
       if (logoutBtn) logoutBtn.hidden = true;

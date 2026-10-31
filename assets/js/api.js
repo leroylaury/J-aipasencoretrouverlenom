@@ -47,7 +47,7 @@ export async function loadPermissions() {
 // Charge uniquement ce que les droits de l'utilisateur permettent (sinon RLS renverrait du vide / une erreur 42501)
 export async function loadAll() {
   const when = (ok, f) => (ok ? f() : Promise.resolve([]));
-  const [cats, parts, stock, costs, orders, lines, profs, imgs, treasury] = await Promise.all([
+  const [cats, parts, stock, costs, orders, lines, profs, imgs, treasury, flows] = await Promise.all([
     when(can("stock.read"), () => run(supabase.from("categories").select("*").order("sort_order").order("name"))),
     when(can("partners.read"), () => run(supabase.from("partners").select("*").order("name"))),
     when(can("stock.read"), () => rpc("stock_overview")),
@@ -58,6 +58,11 @@ export async function loadAll() {
     when(can("stock.read"), () => run(supabase.from("items").select("id,image_path"))),
     when(can("costs.read"), () => supabase.from("treasury_settings").select("opening_cash").maybeSingle().then(({data, error}) => {
       if (error) { console.warn("Erreur treasury_settings:", error.message); return null; }
+      return data;
+    })),
+    // Flux hors impôts : si le script SQL 02 n'est pas encore appliqué, on continue sans.
+    when(can("history.read"), () => supabase.from("cash_flows").select("*").order("occurred_on").order("created_at").then(({ data, error }) => {
+      if (error) { console.warn("cash_flows indisponible :", error.message); return []; }
       return data;
     })),
   ]);
@@ -96,6 +101,8 @@ export async function loadAll() {
     partners: parts.filter(p => !p.archived).map(toPartner),
     archivedPartners: parts.filter(p => p.archived).map(toPartner),
     openingCash: num(treasury?.opening_cash) ?? 0,
+    cashFlows: flows.map(f => ({ id: f.id, direction: f.direction, amount: num(f.amount) ?? 0, label: f.label,
+                                 note: f.note || "", date: f.occurred_on, createdBy: who[f.created_by] || "Inconnu" })),
   };
 }
 
@@ -158,6 +165,9 @@ export async function deleteItem(id) {
   if (item?.image_path) dropImage(item.image_path);
   return "deleted";
 }
+// Recalcule les lignes d'achat de la semaine en cours (lundi -> dimanche) d'un article avec sa fiscalité actuelle.
+// Renvoie le nombre de lignes modifiées. Les semaines clôturées / passées ne sont jamais touchées.
+export const applyItemTaxToCurrentWeek = itemId => rpc("apply_item_tax_to_current_week", { p_item_id: itemId });
 export const deleteCategory = id => run(supabase.from("categories").delete().eq("id", id));
 
 export const setPartnerArchived = (id, archived) =>
@@ -188,6 +198,10 @@ export async function deletePartner(id) {
 }
 
 // --- Trésorerie
+// Flux d'argent HORS comptabilité d'impôts (aucun effet sur tax_compute). id fourni par le client : rejouable sans doublon.
+export const addCashFlow = f => rpc("add_cash_flow", { p_id: f.id, p_direction: f.direction, p_amount: f.amount,
+  p_label: f.label, p_note: f.note || null, p_date: f.date || null });
+export const deleteCashFlow = id => rpc("delete_cash_flow", { p_id: id });
 export const setOpeningCash = amount => rpc("set_opening_cash", { p_amount: amount });
 
 // --- Impôts (RPC existantes, pas encore branchées sur l'UI)

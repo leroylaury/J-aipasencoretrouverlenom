@@ -41,7 +41,7 @@
         <div class="top-actions">
           <button class="icon-btn" id="helpBtn" title="À propos">?</button>
           <div class="top-profile">
-            <span class="avatar avatar-top" id="discord-login-top" style="cursor:pointer">JD</span>
+            <button type="button" class="avatar avatar-top is-guest" id="discord-login-top" aria-label="Se connecter avec Discord">Connexion</button>
             <button class="logout-btn-top" id="logout-top" hidden title="Se déconnecter">⏻</button>
           </div>
         </div>
@@ -119,21 +119,16 @@
         </section>
 
         <section class="page" id="page-finance">
-          <div class="page-heading"><div><div class="eyebrow">SUIVI FINANCIER</div><h1>Trésorerie<span class="orange-dot">.</span></h1><p class="subheading">Suivi des entrées et sorties de fonds.</p></div><button class="btn btn-secondary" data-action="edit-treasury" id="editTreasuryBtn" hidden><span>⚙</span> Paramètres</button></div>
+          <div class="page-heading"><div><div class="eyebrow">SUIVI FINANCIER</div><h1>Trésorerie<span class="orange-dot">.</span></h1><p class="subheading">Suivi des entrées et sorties de fonds.</p></div><div class="heading-actions"><button class="btn btn-primary" data-action="new-flow" id="newFlowBtn" hidden><span>＋</span> Flux hors impôts</button><button class="btn btn-secondary" data-action="edit-treasury" id="editTreasuryBtn" hidden><span>⚙</span> Paramètres</button></div></div>
           <div class="finance-hero"><div><small>SOLDE DISPONIBLE</small><strong id="financeCash">0,00 s</strong><span>COMPAGNIE</span></div><div class="finance-mark">s</div></div>
-          <div class="metric-grid finance-metrics"><article class="metric-card"><div class="metric-top"><span class="metric-label">ENTRÉES CONFIRMÉES</span><span class="metric-icon positive">↗</span></div><div class="metric-value positive" id="financeIn">0,00 s</div><div class="metric-foot"><span>Ventes encaissées</span></div></article><article class="metric-card"><div class="metric-top"><span class="metric-label">SORTIES CONFIRMÉES</span><span class="metric-icon negative">↘</span></div><div class="metric-value negative" id="financeOut">0,00 s</div><div class="metric-foot"><span>Achats réglés</span></div></article></div>
-          <article class="panel table-panel"><div class="panel-heading"><div><div class="eyebrow">JOURNAL DE CAISSE</div><h2>Mouvements financiers</h2></div></div><div class="table-scroll"><table><thead><tr><th>RÉFÉRENCE</th><th>LIBELLÉ</th><th>DATE</th><th class="align-right">MOUVEMENT</th></tr></thead><tbody id="financeRows"></tbody></table></div></article>
+          <div class="metric-grid finance-metrics"><article class="metric-card"><div class="metric-top"><span class="metric-label">ENTRÉES CONFIRMÉES</span><span class="metric-icon positive">↗</span></div><div class="metric-value positive" id="financeIn">0,00 s</div><div class="metric-foot"><span>Ventes et autres entrées</span></div></article><article class="metric-card"><div class="metric-top"><span class="metric-label">SORTIES CONFIRMÉES</span><span class="metric-icon negative">↘</span></div><div class="metric-value negative" id="financeOut">0,00 s</div><div class="metric-foot"><span>Achats et autres sorties</span></div></article></div>
+          <article class="panel table-panel"><div class="panel-heading"><div><div class="eyebrow">JOURNAL DE CAISSE</div><h2>Mouvements financiers</h2></div></div><div class="table-scroll"><table><thead><tr><th>RÉFÉRENCE</th><th class="mobile-hide">LIBELLÉ</th><th class="mobile-hide">DATE</th><th class="align-right">MOUVEMENT</th><th></th></tr></thead><tbody id="financeRows"></tbody></table></div></article>
           <p class="page-footnote">Le stock réel évolue lors de la confirmation d'un achat ou d'une vente. Les ventes en prévision ne réservent pas de quantité.</p>
         </section>
 
         <section class="page" id="page-tax">
-          <div class="page-heading"><div><div class="eyebrow">CONFORMITÉ FISCALE</div><h1>Impôts<span class="orange-dot">.</span></h1><p class="subheading">Récapitulatif des déductions fiscales sur les achats.</p></div></div>
-          <div class="metric-grid">
-            <article class="metric-card"><div class="metric-top"><span class="metric-label">TOTAL ACHATS HT</span><span class="metric-icon">↓</span></div><div class="metric-value" id="taxTotalAchat">0,00 s</div><div class="metric-foot"><span>BASE IMPOSABLE</span></div></article>
-            <article class="metric-card"><div class="metric-top"><span class="metric-label">DÉDUCTIONS TOTALES</span><span class="metric-icon positive">⚖</span></div><div class="metric-value positive" id="taxTotalDeduction">0,00 s</div><div class="metric-foot"><span>MONTANT DÉDUIT</span></div></article>
-            <article class="metric-card"><div class="metric-top"><span class="metric-label">NET À DÉCLARER</span><span class="metric-icon">▤</span></div><div class="metric-value" id="taxNet">0,00 s</div><div class="metric-foot"><span>APRÈS DÉDUCTIONS</span></div></article>
-          </div>
-          <article class="panel table-panel"><div class="panel-heading"><div><div class="eyebrow">DÉTAILS PAR LIGNE</div><h2>Lignes d'achat déductibles</h2></div></div><div class="table-scroll"><table><thead><tr><th>DATE</th><th>ARTICLE</th><th class="align-right mobile-hide">MONTANT HT</th><th class="align-right desktop-only">TAUX</th><th class="align-right">DÉDUCTION</th></tr></thead><tbody id="taxRows"></tbody></table></div></article>
+          <div class="page-heading"><div><div class="eyebrow">CONFORMITÉ FISCALE</div><h1>Impôts<span class="orange-dot">.</span></h1><p class="subheading">Impôt hebdomadaire (lundi → dimanche) sur le CA, moins loyer, citoyenneté et déduction sur achats.</p></div></div>
+          <div id="taxRoot"></div>
         </section>
       </div>
       <footer class="footer"><span>COMPANY MANAGER</span><span>BUILD 0.1.0</span></footer>
