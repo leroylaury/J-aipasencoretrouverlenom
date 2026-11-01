@@ -12,7 +12,20 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'
 
 const state = { openingCash: 0, cash: 0, items: [], categories: [], categoryRows: [], partners: [], orders: [], movements: [], cashFlows: [], itemNames: {} };
 
-function orderTotal(order) { return order.lines.reduce((sum, line) => sum + Math.ceil(line.quantity * line.unitPrice), 0); }
+// Total d'une ligne = arrondi supérieur de quantité × prix unitaire (calcul en centimes entiers, comme le serveur)
+function ceilTotal(qty, price) {
+  const q = Number(qty), c = Math.round(Number(price) * 100);
+  return Number.isFinite(q) && Number.isFinite(c) ? Math.floor((q * c + 99) / 100) : 0;
+}
+// Prix unitaire (2 décimales) dont le total arrondi correspond au total saisi : total ÷ quantité, ajusté au centime
+function unitFromTotal(total, qty) {
+  const t = Number(total), q = Number(qty);
+  if (!(q > 0) || !Number.isFinite(t) || t < 0) return null;
+  let cents = Math.floor(t * 100 / q);
+  for (let i = 0; i < 1000 && ceilTotal(q, cents / 100) < t; i++) cents++;
+  return cents / 100;
+}
+function orderTotal(order) { return order.lines.reduce((sum, line) => sum + ceilTotal(line.quantity, line.unitPrice), 0); }
 function itemFor(id) { return state.items.find(item => item.id === id); }
 // Nom affichable d'un article, même archivé (un ancien bon peut y faire référence)
 function itemLabel(id) {
@@ -297,7 +310,7 @@ function orderDetailHtml(o) {
       <td><div class="cell-title">${escapeHtml(itemLabel(l.itemId))}</div><div class="mobile-only cell-sub">${sCurrency(l.unitPrice)} / unité</div></td>
       <td class="align-right"><strong>${intFmt.format(l.quantity)}</strong></td>
       <td class="align-right mobile-hide">${sCurrency(l.unitPrice)}</td>
-      <td class="align-right"><strong>${sCurrency(Math.ceil(l.quantity * l.unitPrice))}</strong></td>
+      <td class="align-right"><strong>${sCurrency(ceilTotal(l.quantity, l.unitPrice))}</strong></td>
     </tr>`).join('')}</tbody></table></div>`;
 }
 function flowDetailHtml(e) {
@@ -381,7 +394,8 @@ function renderFinance() {
 function renderTax() {}
 function renderAll() { renderDashboard(); renderStock(); renderOperations(); renderPartners(); renderHistory(); renderFinance(); renderTax(); }
 
-initTax({ openModal: (...a) => openModal(...a), closeModal: () => closeModal(), toast: (...a) => toast(...a) });
+initTax({ openModal: (...a) => openModal(...a), closeModal: () => closeModal(), toast: (...a) => toast(...a),
+          findOrder: (b, used) => findPurchaseOrder(b, used), openInHistory: id => goToHistory(id) });
 const backdrop = document.getElementById('modalBackdrop');
 const modalContent = document.getElementById('modalContent');
 function openModal(title, eyebrow, content) {
@@ -410,18 +424,24 @@ function partnerOptions(type) {
   const candidates = state.partners.filter(p => type==='achat' ? p.supplier : p.client);
   return `<option value="">Partenaire non renseigné</option>${candidates.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}`;
 }
-function lineMarkup(type) {
+function lineMarkup(type, itemId = null) {
   const priceField = type === 'achat' ? 'buy' : 'sale';
-  return `<div class="order-line"><select class="line-item" aria-label="Article">${state.items.map(x=>`<option value="${x.id}">${escapeHtml(x.name)} · ${x.stock} en stock</option>`).join('')}</select><input class="line-qty" type="number" min="1" step="1" value="1" aria-label="Quantité"><input class="line-price" type="number" min="0" step="0.01" value="${state.items[0]?.[priceField] ?? 0}" aria-label="Prix unitaire"><button type="button" class="remove-line" aria-label="Supprimer la ligne">×</button></div>`;
+  const selected = state.items.find(x => x.id === itemId) || state.items[0];   // article demandé, sinon le premier
+  const price = selected?.[priceField] ?? 0;
+  return `<div class="order-line"><select class="line-item" aria-label="Article">${state.items.map(x=>`<option value="${x.id}"${x.id === selected?.id ? ' selected' : ''}>${escapeHtml(x.name)} · ${x.stock} en stock</option>`).join('')}</select>`
+    + `<label class="line-cell"><small class="line-cap">QTÉ</small><input class="line-qty" type="number" min="1" step="1" value="1" aria-label="Quantité"></label>`
+    + `<label class="line-cell"><small class="line-cap">PRIX UNIT.</small><input class="line-price" type="number" min="0" step="0.01" value="${price}" aria-label="Prix unitaire"></label>`
+    + `<label class="line-cell"><small class="line-cap">TOTAL</small><input class="line-total" type="number" min="0" step="any" value="${ceilTotal(1, price)}" aria-label="Total de la ligne"></label>`
+    + `<button type="button" class="remove-line" aria-label="Supprimer la ligne">×</button></div>`;
 }
-function openOrderForm(type) {
+function openOrderForm(type, itemId = null) {
   if (!state.items.length) return toast('Ajoutez d’abord un article au catalogue.', true);
   const isBuy = type==='achat';
   openModal(isBuy?'Enregistrer un achat':'Créer une vente','NOUVEAU BON · '+(isBuy?'APPROVISIONNEMENT':'COMMERCE'), `
     <form id="orderForm">
       <input type="hidden" id="orderType" value="${type}">
       <div class="form-grid"><div class="field full"><label for="orderPartner">PARTENAIRE</label><select id="orderPartner">${partnerOptions(type)}</select></div><div class="field"><label for="orderDate">DATE DE L'OPÉRATION</label><input id="orderDate" type="date" value="${new Date().toLocaleDateString('sv-SE')}" max="${new Date().toLocaleDateString('sv-SE')}" ${type==='vente'?'disabled':'required'}></div><div class="field"><label>STATUT INITIAL</label><input value="${isBuy?'Confirmé immédiatement':'En prévision'}" disabled></div></div>
-      <div class="line-builder"><div class="line-builder-head"><strong>Articles du bon</strong><span class="cell-sub">PRIX UNITAIRES EN s</span></div><div class="line-list" id="lineList">${lineMarkup(type)}</div><button type="button" class="add-line" id="addLine">＋ Ajouter une ligne</button></div>
+      <div class="line-builder"><div class="line-builder-head"><strong>Articles du bon</strong><span class="cell-sub">MONTANTS EN s · TOTAL OU PRIX UNITAIRE MODIFIABLES</span></div><div class="line-head" aria-hidden="true"><span>ARTICLE</span><span>QTÉ</span><span>PRIX UNIT.</span><span>TOTAL</span><span></span></div><div class="line-list" id="lineList">${lineMarkup(type, itemId)}</div><button type="button" class="add-line" id="addLine">＋ Ajouter une ligne</button></div>
       <div class="order-total"><span>TOTAL DU BON <small class="cell-sub"> · arrondi supérieur par ligne</small></span><strong id="orderTotalPreview">0,00 s</strong></div>
       <p class="page-footnote">${isBuy?'Le bon sera confirmé immédiatement, la trésorerie diminuée et les quantités ajoutées au stock.':'La vente sera enregistrée en prévision. Le stock et la trésorerie ne bougeront qu’à la confirmation.'}</p>
       <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelOrder">Annuler</button><button class="btn btn-primary" type="submit">${isBuy?'Confirmer l’achat':'Créer la prévision'}</button></div>
@@ -432,9 +452,27 @@ function openOrderForm(type) {
   document.getElementById('orderForm').addEventListener('submit', e=>{e.preventDefault(); submitOrder(type);});
 }
 function bindLineEvents() {
-  document.querySelectorAll('.line-item').forEach(el=>{el.onchange=()=>{const item=itemFor(el.value);const price=el.closest('.order-line').querySelector('.line-price');price.value= item ? (document.getElementById('orderType').value==='achat'?item.buy:item.sale) : 0;updateOrderTotal();};});
-  document.querySelectorAll('.line-qty,.line-price').forEach(el=>el.oninput=updateOrderTotal);
-  document.querySelectorAll('.remove-line').forEach(el=>el.onclick=()=>{ if(document.querySelectorAll('.order-line').length>1){el.closest('.order-line').remove();updateOrderTotal();} else toast('Un bon doit contenir au moins une ligne.',true); });
+  document.querySelectorAll('.order-line').forEach(row => {
+    const qty = row.querySelector('.line-qty'), price = row.querySelector('.line-price'), total = row.querySelector('.line-total');
+    const totalFromPrice = () => { total.value = ceilTotal(qty.value, price.value); };
+    row.querySelector('.line-item').onchange = e => {
+      const item = itemFor(e.target.value);
+      price.value = item ? (document.getElementById('orderType').value === 'achat' ? item.buy : item.sale) : 0;
+      totalFromPrice(); updateOrderTotal();
+    };
+    qty.oninput = () => { totalFromPrice(); updateOrderTotal(); };      // quantité modifiée : le prix unitaire est conservé
+    price.oninput = () => { totalFromPrice(); updateOrderTotal(); };    // prix modifié : total = prix × quantité actuelle
+    total.oninput = () => {                                              // total modifié : prix = total ÷ quantité actuelle
+      const u = total.value === '' ? null : unitFromTotal(total.value, qty.value);
+      if (u !== null) price.value = u;
+      updateOrderTotal();
+    };
+    total.onchange = totalFromPrice;                                     // affiche le total réellement enregistré
+    row.querySelector('.remove-line').onclick = () => {
+      if (document.querySelectorAll('.order-line').length > 1) { row.remove(); updateOrderTotal(); }
+      else toast('Un bon doit contenir au moins une ligne.', true);
+    };
+  });
 }
 function collectLines() {
   return [...document.querySelectorAll('.order-line')].map(row=>({itemId:row.querySelector('.line-item').value,quantity:Number(row.querySelector('.line-qty').value),unitPrice:Number(row.querySelector('.line-price').value)}));
@@ -442,7 +480,7 @@ function collectLines() {
 function updateOrderTotal() {
   if(!document.getElementById('orderTotalPreview')) return;
   const lines=collectLines();
-  const total=lines.reduce((sum,l)=>sum+(Number.isFinite(l.quantity)&&Number.isFinite(l.unitPrice)?Math.ceil(l.quantity*l.unitPrice):0),0);
+  const total=lines.reduce((sum,l)=>sum+ceilTotal(l.quantity,l.unitPrice),0);
   document.getElementById('orderTotalPreview').textContent=sCurrency(total);
 }
 function nextRef(type) {
@@ -647,6 +685,35 @@ function openCategoryForm() {
     };
   });
 }
+function goToHistory(id) {
+  closeModal();
+  historyState.expanded.add(id);
+  resetHistoryFilters(false);
+  showPage('history');
+  setTimeout(() => document.querySelector(`.history-row[data-id="${id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+}
+// Retrouve le bon d'achat d'une ligne de « achats déductibles »
+function findPurchaseOrder(b, used) {
+  // Cas normal (script SQL 03 appliqué) : le serveur renvoie l'identifiant du bon
+  if (b.order_id) {
+    const o = state.orders.find(x => x.id === b.order_id);
+    return o ? { id: o.id, ref: o.ref } : null;
+  }
+  // Repli (ancienne fonction SQL) : rapprochement par date, article, montant et taux
+  const raw = String(b.op_date ?? ''), t = raw.length > 10 ? Date.parse(raw) : NaN, day = raw.slice(0, 10);
+  const name = norm(b.item_name);
+  for (const o of state.orders) {
+    if (o.type !== 'achat' || o.status !== 'confirme') continue;
+    if (Number.isFinite(t) ? Math.abs(Date.parse(o.date) - t) > 1000
+                           : (dayKey(o.date) !== day && new Date(o.date).toISOString().slice(0, 10) !== day)) continue;
+    const i = o.lines.findIndex((l, k) => !used.has(`${o.id}:${k}`)
+      && norm(itemFor(l.itemId)?.name ?? state.itemNames?.[l.itemId]?.name) === name
+      && ceilTotal(l.quantity, l.unitPrice) === Math.round(Number(b.ht))
+      && Number(l.deductionRate) === Number(b.rate));
+    if (i >= 0) { used.add(`${o.id}:${i}`); return { id: o.id, ref: o.ref }; }
+  }
+  return null;
+}
 function openOrderDetails(id) {
   const order=state.orders.find(o=>o.id===id); if(!order)return;
   const lines=order.lines.map(l=>{return `<tr><td>${escapeHtml(itemLabel(l.itemId))}</td><td>${l.quantity}</td><td>${sCurrency(l.unitPrice)}</td><td class="align-right">${sCurrency(Math.ceil(l.quantity*l.unitPrice))}</td></tr>`;}).join('');
@@ -654,13 +721,7 @@ function openOrderDetails(id) {
   if(order.type==='vente'&&order.status==='prevision'&&api.can('vente.manage')) buttons=`<button class="btn btn-primary" id="confirmSale">Confirmer la livraison</button><button class="btn btn-secondary" id="cancelSale">Annuler le bon</button>`;
   openModal(`Bon ${order.ref}`,'DÉTAIL DE L’OPÉRATION',`<div class="detail-list"><div class="detail-box"><small>TYPE</small><strong>${order.type==='achat'?'Achat':'Vente'}</strong></div><div class="detail-box"><small>STATUT</small>${statusBadge(order.status)}</div><div class="detail-box"><small>PARTENAIRE</small><strong>${partnerName(order.partner)}</strong></div><div class="detail-box"><small>DATE</small><strong>${fmtDate(order.date)}</strong></div></div><div class="table-scroll"><table style="min-width:420px"><thead><tr><th>ARTICLE</th><th>QTÉ</th><th>PRIX UNIT.</th><th class="align-right">TOTAL</th></tr></thead><tbody>${lines}</tbody></table></div><div class="order-total"><span>TOTAL DU BON</span><strong>${sCurrency(orderTotal(order))}</strong></div><p class="page-footnote">Créé par ${escapeHtml(order.createdBy)} · Version ${order.version}</p><div class="modal-actions"><button class="btn btn-secondary" id="closeDetails">Fermer</button><button class="btn btn-secondary" id="openInHistory">Voir dans l’historique ↗</button>${buttons}</div>`);
   document.getElementById('closeDetails').onclick=closeModal;
-  document.getElementById('openInHistory').onclick=()=>{
-    closeModal();
-    historyState.expanded.add(order.id);
-    resetHistoryFilters(false);
-    showPage('history');
-    setTimeout(()=>document.querySelector(`.history-row[data-id="${order.id}"]`)?.scrollIntoView({behavior:'smooth',block:'center'}),80);
-  };
+  document.getElementById('openInHistory').onclick=()=>goToHistory(order.id);
   document.getElementById('confirmSale')?.addEventListener('click',()=>confirmSale(order.id));
   document.getElementById('cancelSale')?.addEventListener('click',()=>cancelSale(order.id));
 }
@@ -756,8 +817,8 @@ document.addEventListener('click',e=>{
           <button class="btn btn-danger" id="itemDelete">Supprimer l'article</button>
         ` : ''}
       </div>`);
-    document.getElementById('itemBuy').onclick=()=>openOrderForm('achat');
-    document.getElementById('itemSell').onclick=()=>openOrderForm('vente');
+    document.getElementById('itemBuy').onclick=()=>openOrderForm('achat', item.id);
+    document.getElementById('itemSell').onclick=()=>openOrderForm('vente', item.id);
     if (canManage) {
       document.getElementById('itemEdit').onclick=()=>openItemForm(item);
       document.getElementById('itemDelete').onclick=async ()=>{
@@ -874,9 +935,7 @@ async function initAuth() {
   }
   await boot(session);
   const updateUI = (user) => {
-    const loginBtn = document.getElementById("discord-login");
     const loginBtnTop = document.getElementById("discord-login-top");
-    const logoutBtn = document.getElementById("logout-sidebar");
     const logoutTop = document.getElementById("logout-top");
 
     if (user) {
@@ -889,32 +948,24 @@ async function initAuth() {
       const subheading = document.querySelector('#page-dashboard .subheading');
       if (subheading && !subheading.dataset.manual) subheading.textContent = `Bienvenue sur votre espace de gestion, ${name.split(' ')[0]}.`;
 
-      if (loginBtn) {
-        loginBtn.innerHTML = `<span class="avatar">${avatarUrl ? `<img src="${avatarUrl}" alt="">` : avatarInitials}</span><span><strong>${escapeHtml(name)}</strong><small>Connecté</small></span><span class="chevron">⌄</span>`;
-        loginBtn.onclick = null;
-      }
       if (loginBtnTop) {
         loginBtnTop.classList.remove('is-guest');
         loginBtnTop.setAttribute('aria-label', `Connecté : ${name}`);
+        loginBtnTop.title = `Connecté : ${name}`;
         loginBtnTop.innerHTML = avatarUrl ? `<img src="${escapeHtml(avatarUrl)}" alt="" style="width:100%;height:100%;border-radius:inherit;object-fit:cover">` : avatarInitials;
         loginBtnTop.onclick = null;
       }
 
       const doLogout = () => { if(confirm("Se déconnecter ?")) { signOut().then(() => window.location.reload()); } };
-      if (logoutBtn) { logoutBtn.hidden = false; logoutBtn.onclick = doLogout; }
       if (logoutTop) { logoutTop.hidden = false; logoutTop.onclick = doLogout; }
     } else {
-      if (loginBtn) {
-        loginBtn.innerHTML = `<span class="avatar">?</span><span><strong>Se connecter</strong><small>via Discord</small></span><span class="chevron">⌄</span>`;
-        loginBtn.onclick = signInWithDiscord;
-      }
       if (loginBtnTop) {
         loginBtnTop.classList.add('is-guest');
         loginBtnTop.setAttribute('aria-label', 'Se connecter avec Discord');
+        loginBtnTop.title = 'Se connecter avec Discord';
         loginBtnTop.textContent = 'Connexion';
         loginBtnTop.onclick = signInWithDiscord;
       }
-      if (logoutBtn) logoutBtn.hidden = true;
       if (logoutTop) logoutTop.hidden = true;
     }
   };

@@ -79,15 +79,19 @@ async function openWeek(wk) {
   const own = t => exp.find(e => e.type === t && e.start_date === wk && e.end_date === wk);
   const recurring = exp.filter(e => !(e.start_date === wk && e.end_date === wk));
   const canEdit = !frozen && can("tax.manage");
+  const usedLines = new Set();   // une ligne de bon ne sert qu'une fois au rattachement achat → bon
+  const buyRows = buys.map(b => ({ b, order: ui.findOrder ? ui.findOrder(b, usedLines) : null }));
   const row = (l, v, strong) => `<tr><td>${l}</td><td class="align-right">${strong ? `<b>${v}</b>` : v}</td></tr>`;
   const missing = ["loyer", "citoyennete"].filter(t => !exp.some(e => e.type === t));
 
   const form = canEdit ? `<form id="taxExpForm" style="margin-top:18px"><div class="eyebrow">SAISIE DE LA SEMAINE</div>
-      <div class="form-grid">
-        <div class="field"><label for="expLoyer">LOYER (MONTANT)</label><input id="expLoyer" type="number" min="0" step="0.01" value="${own("loyer")?.amount ?? ""}" placeholder="0"></div>
-        <div class="field"><label for="expLoyerQty">QUANTITÉ</label><input id="expLoyerQty" type="number" min="1" step="1" value="${own("loyer")?.quantity ?? 1}"></div>
-        <div class="field"><label for="expCit">CITOYENNETÉ (MONTANT)</label><input id="expCit" type="number" min="0" step="0.01" value="${own("citoyennete")?.amount ?? ""}" placeholder="0"></div>
-        <div class="field"><label for="expCitQty">QUANTITÉ</label><input id="expCitQty" type="number" min="1" step="1" value="${own("citoyennete")?.quantity ?? 1}"></div>
+      <div class="exp-grid">
+        <div class="field"><label for="expLoyer">LOYER · UNIT.</label><input id="expLoyer" type="number" min="0" step="0.01" value="${own("loyer")?.amount ?? ""}" placeholder="0"></div>
+        <div class="field"><label for="expLoyerQty">QTÉ</label><input id="expLoyerQty" type="number" min="1" step="1" value="${own("loyer")?.quantity ?? 1}"></div>
+        <div class="field"><label for="expLoyerTotal">LOYER · TOTAL</label><input id="expLoyerTotal" type="number" min="0" step="any" placeholder="0"></div>
+        <div class="field"><label for="expCit">CITOYENNETÉ · UNIT.</label><input id="expCit" type="number" min="0" step="0.01" value="${own("citoyennete")?.amount ?? ""}" placeholder="0"></div>
+        <div class="field"><label for="expCitQty">QTÉ</label><input id="expCitQty" type="number" min="1" step="1" value="${own("citoyennete")?.quantity ?? 1}"></div>
+        <div class="field"><label for="expCitTotal">CITOYENNETÉ · TOTAL</label><input id="expCitTotal" type="number" min="0" step="any" placeholder="0"></div>
       </div>
       ${recurring.length ? `<p class="subheading">Lignes récurrentes déjà actives cette semaine : ${recurring.map(e => `${esc(e.label)} ${money(e.amount * e.quantity)}`).join(", ")}.</p>` : ""}
       <div class="modal-actions"><button class="btn btn-primary" type="submit">Enregistrer la saisie</button></div></form>` : "";
@@ -115,9 +119,25 @@ async function openWeek(wk) {
     </tbody></table></div>
     ${form}
     <div class="eyebrow" style="margin-top:18px">ACHATS DÉDUCTIBLES</div>
-    <div class="table-scroll"><table><thead><tr><th>DATE</th><th>ARTICLE</th><th class="align-right">MONTANT</th><th class="align-right">TAUX</th><th class="align-right">DÉDUCTION</th></tr></thead>
-      <tbody>${buys.length ? buys.map(b => `<tr><td>${dmy(b.op_date.slice(0, 10))}</td><td>${esc(b.item_name)}</td><td class="align-right">${money(b.ht)}</td><td class="align-right">${b.rate} %</td><td class="align-right">${money(b.deduction)}</td></tr>`).join("") : `<tr><td colspan="5">Aucun achat déductible cette semaine.</td></tr>`}</tbody></table></div>
+    <div class="table-scroll"><table><thead><tr><th>DATE</th><th>BON</th><th>ARTICLE</th><th class="align-right">MONTANT</th><th class="align-right">TAUX</th><th class="align-right">DÉDUCTION</th></tr></thead>
+      <tbody>${buyRows.length ? buyRows.map(({ b, order }) => `<tr><td><span class="desktop-only">${dmy(b.op_date.slice(0, 10))}</span><span class="mobile-only">${dm(b.op_date.slice(0, 10))}</span></td><td>${order ? `<button type="button" class="link-btn" data-open-order="${esc(order.id)}" title="Voir ce bon dans l’historique">${esc(order.ref)}</button>` : `<span class="cell-sub">—</span>`}</td><td>${esc(b.item_name)}</td><td class="align-right">${money(b.ht)}</td><td class="align-right">${b.rate} %</td><td class="align-right">${money(b.deduction)}</td></tr>`).join("") : `<tr><td colspan="6">Aucun achat déductible cette semaine.</td></tr>`}</tbody></table></div>
     ${actions.length ? `<div class="modal-actions">${actions.join("")}</div>` : ""}`);
+
+  document.querySelectorAll("[data-open-order]").forEach(b => b.onclick = () => ui.openInHistory?.(b.dataset.openOrder));
+  // Total modifiable : total ÷ quantité → montant unitaire ; montant × quantité → total (calcul en centimes entiers)
+  const cents = v => Math.round(Number(v) * 100);
+  const wireTotal = (aId, qId, tId) => {
+    const A = $(aId), Q = $(qId), T = $(tId); if (!A || !Q || !T) return;
+    const qty = () => Math.max(1, parseInt(Q.value, 10) || 1);
+    const totalFromAmount = () => { T.value = A.value === "" ? "" : (cents(A.value) * qty() / 100).toFixed(2); };
+    A.oninput = totalFromAmount;
+    Q.oninput = totalFromAmount;
+    T.oninput = () => { A.value = T.value === "" ? "" : (Math.round(cents(T.value) / qty()) / 100).toFixed(2); };
+    T.onchange = totalFromAmount;       // affiche le total réellement enregistré (arrondi au centime)
+    totalFromAmount();
+  };
+  wireTotal("expLoyer", "expLoyerQty", "expLoyerTotal");
+  wireTotal("expCit", "expCitQty", "expCitTotal");
 
   const done = async (fn, msg) => { try { await fn(); ui.closeModal(); ui.toast(msg); await refreshTax(); } catch (e) { fail(e); } };
   if ($("taxExpForm")) $("taxExpForm").onsubmit = e => {

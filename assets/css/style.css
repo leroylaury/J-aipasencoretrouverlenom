@@ -212,3 +212,41 @@ th.sortable[aria-sort=descending]::after { content: '▼'; opacity: 1; color: va
 
 /* La règle mobile qui masque le dernier <span> d'un pied de tuile ne doit pas cacher la bascule achat/vente */
 .metric-foot > .seg-toggle:last-child { display: inline-flex; }
+
+/* Fenêtres : en-tête collant, bouton ✕ toujours accessible */
+.modal-head { position: sticky; top: -22px; z-index: 5; margin: -22px -22px 20px; padding: 22px 22px 12px; background: var(--panel); border-radius: 12px 12px 0 0; border-bottom: 1px solid var(--line); }
+@media (max-width: 720px) { .modal-head { top: -18px; margin: -18px -18px 16px; padding: 18px 18px 10px; } }
+
+/* Lien vers un bon */
+.link-btn { background: none; border: 0; padding: 0; color: var(--orange2); font: 600 11px 'DM Mono', monospace; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.link-btn:hover { color: var(--orange); }
+
+/* Saisie du loyer / de la citoyenneté : unitaire, quantité, total */
+.exp-grid { display: grid; grid-template-columns: 1fr 80px 1fr; gap: 13px; margin-bottom: 13px; }
+
+/* Lignes de bon : article, quantité, prix unitaire, total */
+.order-line, .line-head { grid-template-columns: 1fr 70px 90px 90px 28px; }
+.line-head { display: grid; gap: 7px; padding: 0 2px 6px; font: 9px 'DM Mono', monospace; letter-spacing: .6px; color: var(--muted); }
+.line-cell { display: block; min-width: 0; }
+.line-cell input { width: 100%; min-width: 0; }
+.line-cap { display: none; }
+@media (max-width: 720px) {
+  .exp-grid { grid-template-columns: 1fr 64px 1fr; gap: 8px; }
+  .line-head { display: none; }
+  .order-line { grid-template-columns: 1fr 1fr 1fr 28px; gap: 6px; row-gap: 8px; }
+  .order-line .line-item { grid-column: 1 / 4; }
+  .order-line .remove-line { grid-column: 4; grid-row: 1; }
+  .line-cap { display: block; margin-bottom: 3px; font: 8px 'DM Mono', monospace; letter-spacing: .5px; color: var(--muted); }
+}
+
+.exp-grid { align-items: end; }
+.link-btn { white-space: nowrap; }
+@media (max-width: 720px) {
+  .modal-head h2 { font-size: 18px; margin-top: 4px; }
+  .modal td.align-right { white-space: nowrap; }
+}
+
+@media (max-width: 720px) {
+  .modal th, .modal td { padding-left: 4px; padding-right: 4px; }
+  .modal table td, .modal table th { font-size: 11px; }
+}
