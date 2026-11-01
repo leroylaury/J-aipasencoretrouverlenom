@@ -77,11 +77,14 @@ export async function loadAll() {
 
   const items = stock.filter(s => !s.archived).map(s => ({
     id: s.item_id, name: s.item_name, category: catName[s.category_id] || "—",
-    stock: s.stock_reel, stockPrevu: s.stock_prevu,
+    stock: s.stock_reel, stockPrevu: s.stock_prevu, outgoing: s.sorties_prevues ?? 0,
     buy: num(s.buy_price) ?? 0, sale: num(s.sale_price) ?? 0,
     glyph: s.item_name.slice(0, 2).toUpperCase(), image: imgUrl(imgOf[s.item_id]),
     taxDeductible: !!cost[s.item_id]?.tax_deductible, taxRate: num(cost[s.item_id]?.deduction_rate) ?? 0,
   }));
+
+  // Tous les articles (archivés inclus) : un ancien bon peut référencer un article archivé
+  const itemNames = Object.fromEntries(stock.map(s => [s.item_id, { name: s.item_name, archived: !!s.archived }]));
 
   const byOrder = {};
   lines.forEach(l => (byOrder[l.order_id] ||= []).push({
@@ -97,7 +100,7 @@ export async function loadAll() {
   }));
 
   return {
-    items, categoryRows: cats, categories: cats.map(c => c.name), orders: mapped.reverse(),
+    items, itemNames, categoryRows: cats, categories: cats.map(c => c.name), orders: mapped.reverse(),
     partners: parts.filter(p => !p.archived).map(toPartner),
     archivedPartners: parts.filter(p => p.archived).map(toPartner),
     openingCash: num(treasury?.opening_cash) ?? 0,

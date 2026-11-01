@@ -162,3 +162,53 @@ button.avatar-top { border: 0; padding: 0; cursor: pointer; color: inherit; font
 @media (max-width: 720px) {
   .heading-actions .btn { height: 36px; padding: 0 10px; font-size: 10px; }
 }
+
+/* Historique : filtres par colonne, tri, flux */
+.toolbar input[type=date] { height: 38px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: #c5cdce; padding: 0 8px; font-size: 11px; color-scheme: dark; min-width: 0; }
+.date-filter { display: flex; align-items: center; gap: 6px; font: 9px 'DM Mono', monospace; color: var(--muted); letter-spacing: .6px; }
+.btn-sm { height: 38px; padding: 0 12px; font-size: 11px; }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--text); }
+th.sortable::after { content: '↕'; margin-left: 6px; opacity: .35; }
+th.sortable[aria-sort=ascending]::after { content: '▲'; opacity: 1; color: var(--orange); }
+th.sortable[aria-sort=descending]::after { content: '▼'; opacity: 1; color: var(--orange); }
+.status.flux { background: #22333d; color: #86b7ce; }
+.status-dot.flux { background: #86b7ce; }
+.mobile-type-indicator.flux { background: #22333d; color: #86b7ce; }
+.chart-toggle { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.chart-toggle input { accent-color: var(--orange); }
+@media (max-width: 720px) {
+  .date-filter { flex: 1; }
+  .date-filter input { flex: 1; }
+  .chart-legend { flex-wrap: wrap; row-gap: 6px; }
+  .chart-toggle { margin-left: 0; flex-basis: 100%; }
+}
+
+@media (max-width: 720px) {
+  /* Historique mobile : filtres sur 2 colonnes lisibles, tableau sans débordement */
+  .history-toolbar select { flex: 1 1 calc(50% - 4px); min-width: 0; font-size: 11px; padding: 0 8px; }
+  .history-toolbar .date-filter { flex: 1 1 calc(50% - 4px); }
+  .history-toolbar #historyReset { flex: 1 1 100%; }
+  .history-toolbar .toolbar-count { margin-left: 0; flex-basis: 100%; }
+  #page-history th, #page-history td { padding-left: 8px; padding-right: 8px; }
+  #page-history th.sortable::after { display: none; margin-left: 3px; }
+  #page-history th.sortable[aria-sort=ascending]::after, #page-history th.sortable[aria-sort=descending]::after { display: inline; }
+}
+
+@media (max-width: 720px) {
+  #page-history th, #page-history td { padding-left: 6px; padding-right: 6px; }
+  #page-history .status::before { display: none; }   /* la pastille mobile suffit : évite un double point */
+}
+
+/* Accueil : options, bascule achat/vente */
+.home-options { display: flex; justify-content: flex-end; margin: -10px 0 12px; font-size: 10px; color: var(--muted); }
+.seg-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.seg-toggle button { border: 0; background: transparent; color: var(--muted); font: 9px 'DM Mono', monospace; letter-spacing: .5px; padding: 3px 8px; text-transform: uppercase; }
+.seg-toggle button + button { border-left: 1px solid var(--line); }
+.seg-toggle button.active { background: var(--orange); color: #1b1d1c; font-weight: 700; }
+.seg-toggle button:not(.active):hover { color: var(--text); }
+.modal-actions { flex-wrap: wrap; }
+@media (max-width: 720px) { .home-options { margin-top: -8px; } }
+
+/* La règle mobile qui masque le dernier <span> d'un pied de tuile ne doit pas cacher la bascule achat/vente */
+.metric-foot > .seg-toggle:last-child { display: inline-flex; }

@@ -50,11 +50,12 @@
       <div class="content-wrap">
         <section class="page active" id="page-dashboard">
           <div class="page-heading"><div><div class="eyebrow">VENDREDI 30 OCTOBRE 2026 <span class="eyebrow-line"></span> RAPPORT OPÉRATIONNEL</div><h1>Vue générale<span class="orange-dot">.</span></h1><p class="subheading">Bienvenue sur votre espace de gestion, Jean.</p></div><button class="btn btn-primary" data-action="new-sale"><span>＋</span> Nouvelle vente</button></div>
+          <div class="home-options"><label class="chart-toggle" title="S'applique au graphique, aux mouvements et aux dernières activités. Le solde de trésorerie les inclut toujours."><input type="checkbox" id="homeIncludeFlows" checked><span>Inclure les flux hors impôts</span></label></div>
           <div class="metric-grid">
             <article class="metric-card metric-cash"><div class="metric-top"><span class="metric-label">TRÉSORERIE DISPONIBLE</span><span class="metric-icon">s</span></div><div class="metric-value" id="cashMetric">0,00 s</div><div class="metric-foot"><span>SOLDE RÉEL</span><span>COMPAGNIE</span></div><div class="metric-stripe"></div></article>
-            <article class="metric-card"><div class="metric-top"><span class="metric-label">VALEUR DU STOCK</span><span class="metric-icon">▤</span></div><div class="metric-value" id="stockValueMetric">0,00 s</div><div class="metric-foot"><span id="stockUnitsMetric">0 unités</span><span>AU PRIX D'ACHAT</span></div></article>
+            <article class="metric-card"><div class="metric-top"><span class="metric-label" id="stockValueLabel">VALEUR STOCK · ACHAT</span><span class="metric-icon">▤</span></div><div class="metric-value" id="stockValueMetric">0,00 s</div><div class="metric-foot"><span id="stockUnitsMetric">0 unités</span><span class="seg-toggle" role="group" aria-label="Valoriser le stock"><button type="button" class="active" data-stock-value="buy" aria-pressed="true">Achat</button><button type="button" data-stock-value="sale" aria-pressed="false">Vente</button></span></div></article>
             <article class="metric-card"><div class="metric-top"><span class="metric-label">VENTES EN ATTENTE</span><span class="metric-icon">◷</span></div><div class="metric-value" id="pendingMetric">0</div><div class="metric-foot"><span class="warning-text">À confirmer</span><span>BONS DE VENTE</span></div></article>
-            <article class="metric-card"><div class="metric-top"><span class="metric-label">MOUVEMENTS DU MOIS</span><span class="metric-icon">⇄</span></div><div class="metric-value" id="movementMetric">0</div><div class="metric-foot"><span>Achats & ventes</span><span>OCTOBRE</span></div></article>
+            <article class="metric-card"><div class="metric-top"><span class="metric-label">MOUVEMENTS · 30 JOURS</span><span class="metric-icon">⇄</span></div><div class="metric-value" id="movementMetric">0</div><div class="metric-foot"><span id="movementFoot">Achats &amp; ventes</span><span>30 JOURS ROULANTS</span></div></article>
           </div>
           <div class="dashboard-grid">
             <article class="panel chart-panel">
@@ -76,7 +77,7 @@
                 <!-- Le graphique sera injecté ici -->
               </div>
               <div class="chart-caption">
-                <span>DONNÉES RÉELLES</span>
+                <span id="chartCaption">DONNÉES RÉELLES</span>
                 <span>SEP (s) · PAR JOUR</span>
               </div>
             </article>
@@ -87,7 +88,7 @@
 
         <section class="page" id="page-stock">
           <div class="page-heading"><div><div class="eyebrow">GESTION DES RESSOURCES</div><h1>Inventaire<span class="orange-dot">.</span></h1><p class="subheading">Consultez les quantités et les derniers prix connus.</p></div><div style="display:flex;gap:8px"><button class="btn btn-secondary" data-action="new-item">＋ Nouvel article</button><button class="btn btn-secondary" data-action="new-buy">＋ Achat</button><button class="btn btn-primary" data-action="new-sale">＋ Vente</button></div></div>
-          <div class="stock-summary"><div><small>ARTICLES RÉFÉRENCÉS</small><strong id="itemCount">00</strong></div><div><small>UNITÉS EN STOCK</small><strong id="stockUnitsSummary">0</strong></div><div><small>CATÉGORIES</small><strong id="categoryCount">00</strong></div></div>
+          <div class="stock-summary"><div><small>ARTICLES RÉFÉRENCÉS</small><strong id="itemCount">00</strong></div><div><small>STOCK RÉEL (UNITÉS)</small><strong id="stockUnitsSummary">0</strong></div><div><small>STOCK PRÉVU (UNITÉS)</small><strong id="stockPrevuSummary">0</strong></div><div><small>CATÉGORIES</small><strong id="categoryCount">00</strong></div></div>
           <div class="toolbar">
             <label class="search-box"><span>⌕</span><input id="stockSearch" type="search" placeholder="Rechercher un article..."></label>
             <select id="categoryFilter" aria-label="Filtrer par catégorie">
@@ -96,8 +97,8 @@
             <button class="btn btn-secondary btn-sm" data-action="new-category" style="padding:4px 12px;font-size:11px">＋ Catégorie</button>
             <span class="toolbar-count" id="stockResultCount">0 ARTICLES</span>
           </div>
-          <article class="panel table-panel"><div class="table-scroll"><table><thead><tr><th>ARTICLE</th><th class="mobile-hide">CATÉGORIE</th><th class="align-right">STOCK RÉEL</th><th class="align-right desktop-only">DERNIER ACHAT</th><th class="align-right desktop-only">DERNIÈRE VENTE</th><th></th></tr></thead><tbody id="stockRows"></tbody></table></div></article>
-          <p class="page-footnote">Le stock réel évolue lors de la confirmation d'un achat ou d'une vente. Les ventes en prévision ne réservent pas de quantité.</p>
+          <article class="panel table-panel"><div class="table-scroll"><table><thead><tr><th>ARTICLE</th><th class="mobile-hide">CATÉGORIE</th><th class="align-right">STOCK RÉEL</th><th class="align-right" title="Stock restant si tous les bons de vente en prévision sont confirmés">STOCK PRÉVU</th><th class="align-right desktop-only">DERNIER ACHAT</th><th class="align-right desktop-only">DERNIÈRE VENTE</th><th></th></tr></thead><tbody id="stockRows"></tbody></table></div></article>
+          <p class="page-footnote">Le stock réel évolue lors de la confirmation d'un achat ou d'une vente. Le stock prévu est le stock réel moins les quantités des ventes en prévision, comme si elles étaient toutes confirmées.</p>
         </section>
 
         <section class="page" id="page-operations">
@@ -113,9 +114,19 @@
         </section>
 
         <section class="page" id="page-history">
-          <div class="page-heading"><div><div class="eyebrow">JOURNAL DES ACTIVITÉS</div><h1>Historique<span class="orange-dot">.</span></h1><p class="subheading">Retrouvez les opérations enregistrées par la compagnie.</p></div></div>
-          <div class="toolbar"><label class="search-box"><span>⌕</span><input id="historySearch" type="search" placeholder="Référence, partenaire, article..."></label><select id="historyType"><option value="all">Tous les types</option><option value="achat">Achats</option><option value="vente">Ventes</option></select><select id="historyStatus"><option value="all">Tous les statuts</option><option value="prevision">Prévisions</option><option value="confirme">Confirmés</option><option value="annule">Annulés</option></select></div>
-          <article class="panel table-panel"><div class="table-scroll"><table><thead><tr><th>RÉFÉRENCE</th><th class="mobile-show-compressed"><span class="desktop-only">OPÉRATION</span><span class="mobile-only" title="Opération">OP.</span></th><th class="mobile-show-compressed"><span class="desktop-only">PARTENAIRE</span><span class="mobile-only" title="Partenaire">P.</span></th><th class="desktop-only">CRÉÉ PAR</th><th>DATE</th><th class="mobile-show-compressed"><span class="desktop-only">STATUT</span><span class="mobile-only" title="Statut">S.</span></th><th class="align-right">TOTAL</th></tr></thead><tbody id="historyRows"></tbody></table></div></article>
+          <div class="page-heading"><div><div class="eyebrow">JOURNAL DES ACTIVITÉS</div><h1>Historique<span class="orange-dot">.</span></h1><p class="subheading">Retrouvez les opérations et les flux de trésorerie enregistrés par la compagnie.</p></div></div>
+          <div class="toolbar history-toolbar">
+            <label class="search-box"><span>⌕</span><input id="historySearch" type="search" placeholder="Réf., partenaire, créé par, article, libellé…" autocomplete="off"></label>
+            <select id="historyType" aria-label="Filtrer par type"><option value="all">Tous les types</option><option value="achat">Achats</option><option value="vente">Ventes</option><option value="flux">Flux hors impôts</option></select>
+            <select id="historyStatus" aria-label="Filtrer par statut"><option value="all">Tous les statuts</option><option value="prevision">Prévisions</option><option value="confirme">Confirmés</option><option value="annule">Annulés</option></select>
+            <select id="historyPartner" aria-label="Filtrer par partenaire"><option value="all">Tous les partenaires</option></select>
+            <select id="historyCreator" aria-label="Filtrer par créateur"><option value="all">Tous les créateurs</option></select>
+            <label class="date-filter"><span>DU</span><input type="date" id="historyFrom" aria-label="Date de début"></label>
+            <label class="date-filter"><span>AU</span><input type="date" id="historyTo" aria-label="Date de fin"></label>
+            <button type="button" class="btn btn-secondary btn-sm" id="historyReset" hidden>Réinitialiser</button>
+            <span class="toolbar-count" id="historyResultCount"></span>
+          </div>
+          <article class="panel table-panel"><div class="table-scroll"><table><thead><tr><th class="sortable" data-sort="ref">RÉFÉRENCE</th><th class="sortable mobile-show-compressed" data-sort="type"><span class="desktop-only">OPÉRATION</span><span class="mobile-only" title="Opération">OP.</span></th><th class="sortable mobile-show-compressed" data-sort="partner"><span class="desktop-only">PARTENAIRE</span><span class="mobile-only" title="Partenaire">P.</span></th><th class="sortable desktop-only" data-sort="createdBy">CRÉÉ PAR</th><th class="sortable" data-sort="date">DATE</th><th class="sortable mobile-show-compressed" data-sort="status"><span class="desktop-only">STATUT</span><span class="mobile-only" title="Statut">S.</span></th><th class="sortable align-right" data-sort="total">TOTAL</th></tr></thead><tbody id="historyRows"></tbody></table></div></article>
         </section>
 
         <section class="page" id="page-finance">

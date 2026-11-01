@@ -10,10 +10,17 @@ const initials = name => name.split(/\s+/).map(x => x[0]).slice(0, 2).join('').t
 const fmtDate = value => new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value));
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-const state = { openingCash: 0, cash: 0, items: [], categories: [], categoryRows: [], partners: [], orders: [], movements: [], cashFlows: [] };
+const state = { openingCash: 0, cash: 0, items: [], categories: [], categoryRows: [], partners: [], orders: [], movements: [], cashFlows: [], itemNames: {} };
 
 function orderTotal(order) { return order.lines.reduce((sum, line) => sum + Math.ceil(line.quantity * line.unitPrice), 0); }
 function itemFor(id) { return state.items.find(item => item.id === id); }
+// Nom affichable d'un article, même archivé (un ancien bon peut y faire référence)
+function itemLabel(id) {
+  const live = itemFor(id);
+  if (live) return live.name;
+  const old = state.itemNames?.[id];
+  return old ? `${old.name}${old.archived ? ' (archivé)' : ''}` : 'Article inconnu';
+}
 function rebuildMovements() {
   const fromOrders = state.orders.filter(o => o.status === 'confirme').map(o => ({
     id: o.id, ref: o.ref, label: `${o.type === 'achat' ? 'Achat' : 'Vente'} · ${o.partner}`,
@@ -48,6 +55,8 @@ document.addEventListener('click', e => {
     openAction(actionButton.dataset.action);
     return;
   }
+  const stockMode = e.target.closest('[data-stock-value]');
+  if (stockMode) { stockValueMode = stockMode.dataset.stockValue; renderDashboard(); return; }
   const chartTab = e.target.closest('.chart-tab');
   if (chartTab) {
     document.querySelectorAll('.chart-tab').forEach(t => t.classList.toggle('active', t === chartTab));
@@ -58,12 +67,12 @@ document.addEventListener('click', e => {
 });
 
 function statusBadge(status) {
-  const labels = { confirme:'Confirmé', prevision:'En prévision', annule:'Annulé' };
+  const labels = { confirme:'Confirmé', prevision:'En prévision', annule:'Annulé', flux:'Hors impôts' };
   return `<span class="status ${status}"><span class="desktop-only">${labels[status]}</span><span class="mobile-only status-dot ${status}" title="${labels[status]}"></span></span>`;
 }
 function typeChip(type) {
-  const label = type === 'achat' ? 'ACHAT' : 'VENTE';
-  const letter = type === 'achat' ? 'A' : 'V';
+  const label = { achat: 'ACHAT', vente: 'VENTE', flux: 'FLUX' }[type] || 'VENTE';
+  const letter = { achat: 'A', vente: 'V', flux: 'F' }[type] || 'V';
   return `<span class="type-chip ${type} desktop-only">${label}</span><span class="mobile-type-indicator ${type}" title="${label}">${letter}</span>`;
 }
 function partnerName(name) {
@@ -71,17 +80,41 @@ function partnerName(name) {
   const short = name ? (name.length > 8 ? name.substring(0, 7) + '…' : name) : '…';
   return `<span class="desktop-only">${escaped}</span><span class="mobile-only" title="${escaped}">${escapeHtml(short)}</span>`;
 }
+let stockValueMode = 'buy';                    // 'buy' (prix d'achat) ou 'sale' (prix de vente)
+const homeFlows = () => document.getElementById('homeIncludeFlows')?.checked ?? true;
 function renderDashboard() {
+  const withFlows = homeFlows();
   const stockUnits = state.items.reduce((sum,x) => sum + x.stock, 0);
-  const stockValue = state.items.reduce((sum,x) => sum + x.stock * x.buy, 0);
+  // Sans droit sur les coûts, seule la valeur de vente a un sens (on ne modifie pas le choix mémorisé :
+  // le premier affichage a lieu avant le chargement des permissions)
+  const valueMode = api.can('costs.read') ? stockValueMode : 'sale';
+  const stockValue = state.items.reduce((sum,x) => sum + x.stock * (valueMode === 'sale' ? x.sale : x.buy), 0);
   const pending = state.orders.filter(o => o.status === 'prevision').length;
+
+  // Mouvements : 30 derniers jours roulants (aujourd'hui inclus), bons confirmés (+ flux si coché)
+  const winStart = new Date(); winStart.setHours(0, 0, 0, 0); winStart.setDate(winStart.getDate() - 29);
+  const winEnd = new Date(); winEnd.setHours(23, 59, 59, 999);
+  const movementCount = state.movements.filter(m => (withFlows || !m.flow) && new Date(m.date) >= winStart && new Date(m.date) <= winEnd).length;
+
   document.getElementById('cashMetric').textContent = sCurrency(state.cash);
   document.getElementById('stockValueMetric').textContent = sCurrency(stockValue);
+  document.getElementById('stockValueLabel').textContent = `VALEUR STOCK · ${valueMode === 'sale' ? 'VENTE' : 'ACHAT'}`;
+  document.querySelectorAll('[data-stock-value]').forEach(b => {
+    const on = b.dataset.stockValue === valueMode;
+    b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on));
+    if (b.dataset.stockValue === 'buy') b.hidden = !api.can('costs.read');
+  });
   document.getElementById('stockUnitsMetric').textContent = `${intFmt.format(stockUnits)} unités`;
   document.getElementById('pendingMetric').textContent = intFmt.format(pending);
-  document.getElementById('movementMetric').textContent = intFmt.format(state.orders.length);
+  document.getElementById('movementMetric').textContent = intFmt.format(movementCount);
+  document.getElementById('movementFoot').textContent = withFlows ? 'Achats, ventes & flux' : 'Achats & ventes';
   document.getElementById('navStockCount').textContent = String(state.items.length).padStart(2,'0');
-  document.getElementById('recentRows').innerHTML = [...state.orders].sort((a,b) => new Date(b.date)-new Date(a.date)).slice(0,5).map(order => `<tr><td><div class="reference-cell"><span class="item-symbol">${order.type==='achat'?'↓':'↑'}</span><span><span class="cell-title">${escapeHtml(order.ref)}</span><span class="cell-sub">${order.lines.length} ligne(s)</span></span></div></td><td>${partnerName(order.partner)}</td><td class="mobile-hide">${fmtDate(order.date)}</td><td class="desktop-only">${statusBadge(order.status)}</td><td class="align-right"><strong>${sCurrency(orderTotal(order))}</strong></td></tr>`).join('');
+
+  const recent = historyEntries().filter(e => withFlows || e.kind === 'order')
+    .sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0,5);
+  document.getElementById('recentRows').innerHTML = recent.map(e => e.kind === 'flow'
+    ? `<tr><td><div class="reference-cell"><span class="item-symbol">⇄</span><span><span class="cell-title">FLUX</span><span class="cell-sub">${escapeHtml(e.flow.label)}</span></span></div></td><td><span class="cell-sub">—</span></td><td class="mobile-hide">${fmtDate(e.date)}</td><td class="desktop-only">${statusBadge('flux')}</td><td class="align-right"><strong class="${e.inflow ? 'positive' : 'negative'}">${e.inflow ? '+' : '−'} ${sCurrency(e.total)}</strong></td></tr>`
+    : `<tr><td><div class="reference-cell"><span class="item-symbol">${e.type==='achat'?'↓':'↑'}</span><span><span class="cell-title">${escapeHtml(e.ref)}</span><span class="cell-sub">${e.order.lines.length} ligne(s)</span></span></div></td><td>${partnerName(e.partner)}</td><td class="mobile-hide">${fmtDate(e.date)}</td><td class="desktop-only">${statusBadge(e.status)}</td><td class="align-right"><strong>${sCurrency(e.total)}</strong></td></tr>`).join('');
   renderCashflowChart();
 }
 let currentChartRange = 7;
@@ -97,10 +130,15 @@ function renderCashflowChart() {
     days.push(d);
   }
 
+  const withFlows = homeFlows();
+  const movements = withFlows ? state.movements : state.movements.filter(m => !m.flow);
+  const caption = document.getElementById('chartCaption');
+  if (caption) caption.textContent = withFlows ? 'BONS CONFIRMÉS + FLUX HORS IMPÔTS' : 'BONS CONFIRMÉS UNIQUEMENT';
+
   const data = days.map(day => {
     const dayEnd = new Date(day);
     dayEnd.setHours(23, 59, 59, 999);
-    const dayMovements = state.movements.filter(m => {
+    const dayMovements = movements.filter(m => {
       const mDate = new Date(m.date);
       return mDate >= day && mDate <= dayEnd;
     });
@@ -143,6 +181,7 @@ function renderStock() {
   const category = document.getElementById('categoryFilter')?.value || 'all';
   const filtered = state.items.filter(x => (x.name.toLowerCase().includes(query) || x.category.toLowerCase().includes(query)) && (category === 'all' || x.category === category));
   const stockUnits = state.items.reduce((sum,x) => sum+x.stock,0);
+  const stockPrevu = state.items.reduce((sum,x) => sum+(x.stockPrevu ?? x.stock),0);
 
   const catFilter = document.getElementById('categoryFilter');
   if (catFilter) {
@@ -153,25 +192,14 @@ function renderStock() {
   document.getElementById('itemCount').textContent = String(state.items.length).padStart(2,'0');
   document.getElementById('categoryCount').textContent = String(state.categories.length).padStart(2,'0');
   document.getElementById('stockUnitsSummary').textContent = intFmt.format(stockUnits);
+  document.getElementById('stockPrevuSummary').textContent = intFmt.format(stockPrevu);
   document.getElementById('stockResultCount').textContent = `${filtered.length} ARTICLE${filtered.length>1?'S':''}`;
-  document.getElementById('stockRows').innerHTML = filtered.length ? filtered.map(x => `<tr><td><div class="item-cell"><span class="item-symbol">${x.image ? `<img src="${escapeHtml(x.image)}" alt="">` : escapeHtml(x.glyph)}</span><span><span class="cell-title">${escapeHtml(x.name)}</span><span class="cell-sub mobile-hide">Réf. ${escapeHtml(x.id.toUpperCase())}</span></span></div></td><td class="mobile-hide">${escapeHtml(x.category)}</td><td class="align-right"><strong>${intFmt.format(x.stock)}</strong> <span class="cell-sub">unités</span></td><td class="align-right desktop-only">${sCurrency(x.buy)}</td><td class="align-right desktop-only">${sCurrency(x.sale)}</td><td><button class="row-action" data-item-action="${x.id}">Opérer</button></td></tr>`).join('') : `<tr><td colspan="6"><div class="empty-state">Aucun article ne correspond à votre recherche.</div></td></tr>`;
+  document.getElementById('stockRows').innerHTML = filtered.length ? filtered.map(x => `<tr><td><div class="item-cell"><span class="item-symbol">${x.image ? `<img src="${escapeHtml(x.image)}" alt="">` : escapeHtml(x.glyph)}</span><span><span class="cell-title">${escapeHtml(x.name)}</span><span class="cell-sub mobile-hide">Réf. ${escapeHtml(x.id.toUpperCase())}</span></span></div></td><td class="mobile-hide">${escapeHtml(x.category)}</td><td class="align-right"><strong class="${x.stock < 0 ? 'negative' : ''}">${intFmt.format(x.stock)}</strong> <span class="cell-sub mobile-hide">unités</span></td><td class="align-right" title="Stock restant si les ${intFmt.format(x.outgoing || 0)} unité(s) en vente prévue sont livrées"><strong class="${(x.stockPrevu ?? x.stock) < 0 ? 'negative' : ''}">${intFmt.format(x.stockPrevu ?? x.stock)}</strong>${x.outgoing ? ` <span class="cell-sub">−${intFmt.format(x.outgoing)} prévues</span>` : ''}</td><td class="align-right desktop-only">${sCurrency(x.buy)}</td><td class="align-right desktop-only">${sCurrency(x.sale)}</td><td><button class="row-action" data-item-action="${x.id}">Opérer</button></td></tr>`).join('') : `<tr><td colspan="7"><div class="empty-state">Aucun article ne correspond à votre recherche.</div></td></tr>`;
 }
 function renderOperations() {
   const filter = document.getElementById('operationFilter')?.value || 'all';
   const rows = [...state.orders].filter(o => filter === 'all' || o.status === filter).sort((a,b)=>new Date(b.date)-new Date(a.date));
   document.getElementById('operationRows').innerHTML = rows.map(o => `<tr><td><span class="cell-title">${escapeHtml(o.ref)}</span></td><td>${typeChip(o.type)}</td><td>${partnerName(o.partner)}</td><td class="mobile-hide">${fmtDate(o.date)}</td><td class="mobile-show-compressed">${statusBadge(o.status)}</td><td class="align-right"><strong>${sCurrency(orderTotal(o))}</strong></td><td><button class="row-action" data-order="${o.id}">Détails</button></td></tr>`).join('') || `<tr><td colspan="7"><div class="empty-state">Aucune opération.</div></td></tr>`;
-
-  document.querySelectorAll('.row-action[data-order]').forEach(btn => {
-    btn.onclick = () => {
-      showPage('history');
-      const row = document.querySelector(`.history-row[data-id="${btn.dataset.order}"]`);
-      if (row) {
-        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        const expandBtn = row.querySelector('.expand-btn');
-        if (expandBtn && expandBtn.textContent === '＋') expandBtn.click();
-      }
-    };
-  });
 }
 function renderPartners() {
   const query = (document.getElementById('partnerSearch')?.value || '').toLowerCase();
@@ -188,65 +216,150 @@ function renderPartners() {
       <div class="partner-note">${escapeHtml(p.note || 'Aucune note')}</div>
     </article>`).join('') || `<div class="empty-state">Aucun partenaire trouvé.</div>`;
 }
+// ---------------------------------------------------------------- Historique
+const historyState = { sort: { key: 'date', dir: 'desc' }, expanded: new Set() };
+const NO_PARTNER = '__none__';
+const STATUS_LABELS = { confirme: 'Confirmé', prevision: 'En prévision', annule: 'Annulé' };
+const TYPE_LABELS = { achat: 'Achat', vente: 'Vente', flux: 'Flux hors impôts' };
+// Recherche insensible à la casse, aux accents et aux espaces insécables
+const norm = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s\u00a0\u202f]+/g, ' ').toLowerCase();
+const dayKey = value => new Date(value).toLocaleDateString('sv-SE');     // AAAA-MM-JJ, heure locale
+
+// Bons + flux hors impôts dans une même liste
+function historyEntries() {
+  const orders = state.orders.map(o => ({
+    kind: 'order', id: o.id, ref: o.ref, type: o.type, status: o.status, partner: o.partner || '',
+    createdBy: o.createdBy, date: o.date, total: orderTotal(o), order: o,
+    extra: o.lines.map(l => itemLabel(l.itemId)).join(' '),
+  }));
+  const flows = (state.cashFlows || []).map(f => ({
+    kind: 'flow', id: f.id, ref: 'FLUX', type: 'flux', status: 'confirme', partner: '',
+    createdBy: f.createdBy, date: `${f.date}T12:00:00`, total: f.amount, inflow: f.direction === 'entree', flow: f,
+    extra: `${f.label} ${f.note} ${f.direction === 'entree' ? 'entrée' : 'sortie'} hors impôts`,
+  }));
+  return [...orders, ...flows];
+}
+function historyHaystack(e) {
+  return norm([
+    e.ref, TYPE_LABELS[e.type], e.kind === 'order' ? STATUS_LABELS[e.status] : 'hors impôts',
+    e.kind === 'order' ? (e.partner || 'Partenaire non renseigné') : '',
+    e.createdBy, fmtDate(e.date), dayKey(e.date), e.total, sCurrency(e.total), e.extra,
+  ].join(' '));
+}
+const historyVal = id => document.getElementById(id)?.value || '';
+function filteredHistory(entries) {
+  const tokens = norm(historyVal('historySearch')).split(' ').filter(Boolean);
+  const type = historyVal('historyType') || 'all', status = historyVal('historyStatus') || 'all';
+  const partner = historyVal('historyPartner') || 'all', creator = historyVal('historyCreator') || 'all';
+  const from = historyVal('historyFrom'), to = historyVal('historyTo');
+  return entries.filter(e => {
+    if (type !== 'all' && e.type !== type) return false;
+    if (status !== 'all' && e.status !== status) return false;
+    if (partner !== 'all') {
+      if (e.kind !== 'order') return false;
+      if (partner === NO_PARTNER ? e.partner !== '' : e.partner !== partner) return false;
+    }
+    if (creator !== 'all' && e.createdBy !== creator) return false;
+    const day = dayKey(e.date);
+    if ((from && day < from) || (to && day > to)) return false;
+    if (tokens.length) { const hay = historyHaystack(e); if (!tokens.every(t => hay.includes(t))) return false; }
+    return true;
+  });
+}
+const SORT_VALUE = {
+  ref: e => e.ref, type: e => TYPE_LABELS[e.type], partner: e => e.partner, createdBy: e => e.createdBy,
+  date: e => new Date(e.date).getTime(), status: e => e.kind === 'flow' ? 'zz' : STATUS_LABELS[e.status], total: e => e.total,
+};
+function sortHistory(rows) {
+  const { key, dir } = historyState.sort, get = SORT_VALUE[key] || SORT_VALUE.date, m = dir === 'asc' ? 1 : -1;
+  return rows.sort((a, b) => {
+    const x = get(a), y = get(b);
+    const c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), 'fr', { numeric: true, sensitivity: 'base' });
+    return c ? c * m : new Date(b.date) - new Date(a.date);
+  });
+}
+function syncHistorySelect(id, firstLabel, options) {
+  const el = document.getElementById(id); if (!el) return;
+  const current = el.value || 'all';
+  el.innerHTML = `<option value="all">${firstLabel}</option>` + options.map(([v, l]) => `<option value="${escapeHtml(v)}">${escapeHtml(l)}</option>`).join('');
+  el.value = [...el.options].some(o => o.value === current) ? current : 'all';
+}
+function resetHistoryFilters(render = true) {
+  ['historySearch', 'historyFrom', 'historyTo'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['historyType', 'historyStatus', 'historyPartner', 'historyCreator'].forEach(id => { const el = document.getElementById(id); if (el) el.value = 'all'; });
+  if (render) renderHistory();
+}
+function orderDetailHtml(o) {
+  return `<div class="detail-content"><table class="detail-table"><thead><tr>
+      <th style="width: 40%">ARTICLE</th><th class="align-right" style="width: 15%">QTÉ</th>
+      <th class="align-right mobile-hide" style="width: 20%">PRIX UNIT.</th><th class="align-right" style="width: 25%">TOTAL</th>
+    </tr></thead><tbody>${o.lines.map(l => `<tr>
+      <td><div class="cell-title">${escapeHtml(itemLabel(l.itemId))}</div><div class="mobile-only cell-sub">${sCurrency(l.unitPrice)} / unité</div></td>
+      <td class="align-right"><strong>${intFmt.format(l.quantity)}</strong></td>
+      <td class="align-right mobile-hide">${sCurrency(l.unitPrice)}</td>
+      <td class="align-right"><strong>${sCurrency(Math.ceil(l.quantity * l.unitPrice))}</strong></td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+function flowDetailHtml(e) {
+  const f = e.flow;
+  return `<div class="detail-content"><div class="detail-list">
+      <div class="detail-box"><small>LIBELLÉ</small><strong>${escapeHtml(f.label)}</strong></div>
+      <div class="detail-box"><small>SENS</small><strong class="${e.inflow ? 'positive' : 'negative'}">${e.inflow ? 'Entrée' : 'Sortie'} d’argent</strong></div>
+      <div class="detail-box"><small>DATE</small><strong>${fmtDate(e.date)}</strong></div>
+      <div class="detail-box"><small>NOTE</small><strong>${escapeHtml(f.note || '—')}</strong></div>
+    </div><p class="page-footnote">Mouvement de trésorerie uniquement : aucun effet sur le calcul des impôts.</p></div>`;
+}
+function historyRowHtml(e) {
+  const open = historyState.expanded.has(e.id), isFlow = e.kind === 'flow';
+  const total = isFlow
+    ? `<strong class="${e.inflow ? 'positive' : 'negative'}">${e.inflow ? '+' : '−'} ${sCurrency(e.total)}</strong>`
+    : `<strong>${sCurrency(e.total)}</strong>`;
+  return `
+    <tr class="history-row${open ? ' expanded' : ''}" data-id="${e.id}">
+      <td><div style="display:flex;align-items:center;gap:8px"><button class="expand-btn" aria-expanded="${open}">${open ? '－' : '＋'}</button><span class="cell-title">${isFlow ? 'FLUX' : escapeHtml(e.ref)}</span></div></td>
+      <td>${typeChip(e.type)}</td>
+      <td>${isFlow ? '<span class="cell-sub">—</span>' : partnerName(e.partner)}</td>
+      <td class="desktop-only">${escapeHtml(e.createdBy)}</td>
+      <td class="mobile-small-date">${fmtDate(e.date)}</td>
+      <td>${statusBadge(isFlow ? 'flux' : e.status)}</td>
+      <td class="align-right">${total}</td>
+    </tr>
+    <tr class="detail-row" id="detail-${e.id}" style="display:${open ? 'table-row' : 'none'}">
+      <td colspan="7">${isFlow ? flowDetailHtml(e) : orderDetailHtml(e.order)}</td>
+    </tr>`;
+}
 function renderHistory() {
-  const query = (document.getElementById('historySearch')?.value || '').toLowerCase();
-  const type = document.getElementById('historyType')?.value || 'all';
-  const status = document.getElementById('historyStatus')?.value || 'all';
-  const rows = [...state.orders].filter(o => (type==='all'||o.type===type) && (status==='all'||o.status===status) && (`${o.ref} ${o.partner} ${o.lines.map(l=>itemFor(l.itemId)?.name).join(' ')}`.toLowerCase().includes(query))).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const all = historyEntries();
+  const orders = all.filter(e => e.kind === 'order');
+  const partners = [...new Set(orders.map(e => e.partner).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr'));
+  syncHistorySelect('historyPartner', 'Tous les partenaires',
+    [...(orders.some(e => !e.partner) ? [[NO_PARTNER, 'Partenaire non renseigné']] : []), ...partners.map(n => [n, n])]);
+  syncHistorySelect('historyCreator', 'Tous les créateurs',
+    [...new Set(all.map(e => e.createdBy).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'fr')).map(n => [n, n]));
 
-  document.getElementById('historyRows').innerHTML = rows.length ? rows.map(o => `
-    <tr class="history-row" data-id="${o.id}">
-      <td><div style="display:flex;align-items:center;gap:8px"><button class="expand-btn">＋</button><span class="cell-title">${escapeHtml(o.ref)}</span></div></td>
-      <td>${typeChip(o.type)}</td>
-      <td>${partnerName(o.partner)}</td>
-      <td class="desktop-only">${escapeHtml(o.createdBy)}</td>
-      <td class="mobile-small-date">${fmtDate(o.date)}</td>
-      <td>${statusBadge(o.status)}</td>
-      <td class="align-right"><strong>${sCurrency(orderTotal(o))}</strong></td>
-    </tr>
-    <tr class="detail-row" id="detail-${o.id}" style="display:none">
-      <td colspan="7">
-        <div class="detail-content">
-          <table class="detail-table">
-            <thead>
-              <tr>
-                <th style="width: 40%">ARTICLE</th>
-                <th class="align-right" style="width: 15%">QTÉ</th>
-                <th class="align-right mobile-hide" style="width: 20%">PRIX UNIT.</th>
-                <th class="align-right" style="width: 25%">TOTAL</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${o.lines.map(l => {
-                const item = itemFor(l.itemId);
-                return `
-                  <tr>
-                    <td><div class="cell-title">${escapeHtml(item?.name || 'Inconnu')}</div><div class="mobile-only cell-sub">${sCurrency(l.unitPrice)} / unité</div></td>
-                    <td class="align-right"><strong>${intFmt.format(l.quantity)}</strong></td>
-                    <td class="align-right mobile-hide">${sCurrency(l.unitPrice)}</td>
-                    <td class="align-right"><strong>${sCurrency(Math.ceil(l.quantity * l.unitPrice))}</strong></td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-      </td>
-    </tr>
-  `).join('') : `<tr><td colspan="7"><div class="empty-state">Aucune opération ne correspond aux filtres.</div></td></tr>`;
+  const rows = sortHistory(filteredHistory(all));
+  const filtering = historyVal('historySearch') || historyVal('historyFrom') || historyVal('historyTo')
+    || ['historyType', 'historyStatus', 'historyPartner', 'historyCreator'].some(id => (historyVal(id) || 'all') !== 'all');
+  const resetBtn = document.getElementById('historyReset'); if (resetBtn) resetBtn.hidden = !filtering;
+  const count = document.getElementById('historyResultCount');
+  if (count) count.textContent = filtering ? `${rows.length} / ${all.length} ENTRÉE${all.length > 1 ? 'S' : ''}` : `${all.length} ENTRÉE${all.length > 1 ? 'S' : ''}`;
+  document.querySelectorAll('#page-history th[data-sort]').forEach(th =>
+    th.setAttribute('aria-sort', th.dataset.sort === historyState.sort.key ? (historyState.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'));
 
+  document.getElementById('historyRows').innerHTML = rows.length
+    ? rows.map(historyRowHtml).join('')
+    : `<tr><td colspan="7"><div class="empty-state">Aucune entrée ne correspond aux filtres.</div></td></tr>`;
   bindHistoryEvents();
 }
 function bindHistoryEvents() {
   document.querySelectorAll('.expand-btn').forEach(btn => {
-    btn.onclick = (e) => {
-      const row = e.target.closest('.history-row');
-      const id = row.dataset.id;
-      const detail = document.getElementById(`detail-${id}`);
-      const isExpanded = detail.style.display !== 'none';
-      detail.style.display = isExpanded ? 'none' : 'table-row';
-      e.target.textContent = isExpanded ? '＋' : '－';
-      row.classList.toggle('expanded', !isExpanded);
+    btn.onclick = () => {
+      const row = btn.closest('.history-row'), id = row.dataset.id;
+      const open = !historyState.expanded.has(id);
+      if (open) historyState.expanded.add(id); else historyState.expanded.delete(id);   // l'état survit aux rafraîchissements
+      document.getElementById(`detail-${id}`).style.display = open ? 'table-row' : 'none';
+      btn.textContent = open ? '－' : '＋'; btn.setAttribute('aria-expanded', String(open));
+      row.classList.toggle('expanded', open);
     };
   });
 }
@@ -536,11 +649,18 @@ function openCategoryForm() {
 }
 function openOrderDetails(id) {
   const order=state.orders.find(o=>o.id===id); if(!order)return;
-  const lines=order.lines.map(l=>{const item=itemFor(l.itemId);return `<tr><td>${escapeHtml(item?.name||'Article')}</td><td>${l.quantity}</td><td>${sCurrency(l.unitPrice)}</td><td class="align-right">${sCurrency(Math.ceil(l.quantity*l.unitPrice))}</td></tr>`;}).join('');
+  const lines=order.lines.map(l=>{return `<tr><td>${escapeHtml(itemLabel(l.itemId))}</td><td>${l.quantity}</td><td>${sCurrency(l.unitPrice)}</td><td class="align-right">${sCurrency(Math.ceil(l.quantity*l.unitPrice))}</td></tr>`;}).join('');
   let buttons='';
   if(order.type==='vente'&&order.status==='prevision'&&api.can('vente.manage')) buttons=`<button class="btn btn-primary" id="confirmSale">Confirmer la livraison</button><button class="btn btn-secondary" id="cancelSale">Annuler le bon</button>`;
-  openModal(`Bon ${order.ref}`,'DÉTAIL DE L’OPÉRATION',`<div class="detail-list"><div class="detail-box"><small>TYPE</small><strong>${order.type==='achat'?'Achat':'Vente'}</strong></div><div class="detail-box"><small>STATUT</small>${statusBadge(order.status)}</div><div class="detail-box"><small>PARTENAIRE</small><strong>${partnerName(order.partner)}</strong></div><div class="detail-box"><small>DATE</small><strong>${fmtDate(order.date)}</strong></div></div><div class="table-scroll"><table style="min-width:420px"><thead><tr><th>ARTICLE</th><th>QTÉ</th><th>PRIX UNIT.</th><th class="align-right">TOTAL</th></tr></thead><tbody>${lines}</tbody></table></div><div class="order-total"><span>TOTAL DU BON</span><strong>${sCurrency(orderTotal(order))}</strong></div><p class="page-footnote">Créé par ${escapeHtml(order.createdBy)} · Version ${order.version}</p><div class="modal-actions"><button class="btn btn-secondary" id="closeDetails">Fermer</button>${buttons}</div>`);
+  openModal(`Bon ${order.ref}`,'DÉTAIL DE L’OPÉRATION',`<div class="detail-list"><div class="detail-box"><small>TYPE</small><strong>${order.type==='achat'?'Achat':'Vente'}</strong></div><div class="detail-box"><small>STATUT</small>${statusBadge(order.status)}</div><div class="detail-box"><small>PARTENAIRE</small><strong>${partnerName(order.partner)}</strong></div><div class="detail-box"><small>DATE</small><strong>${fmtDate(order.date)}</strong></div></div><div class="table-scroll"><table style="min-width:420px"><thead><tr><th>ARTICLE</th><th>QTÉ</th><th>PRIX UNIT.</th><th class="align-right">TOTAL</th></tr></thead><tbody>${lines}</tbody></table></div><div class="order-total"><span>TOTAL DU BON</span><strong>${sCurrency(orderTotal(order))}</strong></div><p class="page-footnote">Créé par ${escapeHtml(order.createdBy)} · Version ${order.version}</p><div class="modal-actions"><button class="btn btn-secondary" id="closeDetails">Fermer</button><button class="btn btn-secondary" id="openInHistory">Voir dans l’historique ↗</button>${buttons}</div>`);
   document.getElementById('closeDetails').onclick=closeModal;
+  document.getElementById('openInHistory').onclick=()=>{
+    closeModal();
+    historyState.expanded.add(order.id);
+    resetHistoryFilters(false);
+    showPage('history');
+    setTimeout(()=>document.querySelector(`.history-row[data-id="${order.id}"]`)?.scrollIntoView({behavior:'smooth',block:'center'}),80);
+  };
   document.getElementById('confirmSale')?.addEventListener('click',()=>confirmSale(order.id));
   document.getElementById('cancelSale')?.addEventListener('click',()=>cancelSale(order.id));
 }
@@ -691,7 +811,16 @@ document.addEventListener('click',e=>{
 ['stockSearch','categoryFilter'].forEach(id=>document.getElementById(id)?.addEventListener(id==='stockSearch'?'input':'change',renderStock));
 document.getElementById('operationFilter')?.addEventListener('change',renderOperations);
 ['partnerSearch'].forEach(id=>document.getElementById(id)?.addEventListener('input',renderPartners));
-['historySearch','historyType','historyStatus'].forEach(id=>document.getElementById(id)?.addEventListener(id==='historySearch'?'input':'change',renderHistory));
+['historySearch','historyFrom','historyTo'].forEach(id=>document.getElementById(id)?.addEventListener('input',renderHistory));
+['historyType','historyStatus','historyPartner','historyCreator'].forEach(id=>document.getElementById(id)?.addEventListener('change',renderHistory));
+document.getElementById('historyReset')?.addEventListener('click',()=>resetHistoryFilters());
+document.querySelector('#page-history thead')?.addEventListener('click', e => {
+  const th = e.target.closest('th[data-sort]'); if (!th) return;
+  const key = th.dataset.sort, cur = historyState.sort;
+  historyState.sort = { key, dir: cur.key === key ? (cur.dir === 'asc' ? 'desc' : 'asc') : (key === 'date' || key === 'total' ? 'desc' : 'asc') };
+  renderHistory();
+});
+document.getElementById('homeIncludeFlows')?.addEventListener('change',renderDashboard);
 document.getElementById('helpBtn').addEventListener('click',()=>toast('Données synchronisées avec Supabase.'));
 function updateDashboardDate() {
   const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };
