@@ -84,7 +84,7 @@ export async function loadAll() {
   }));
 
   // Tous les articles (archivés inclus) : un ancien bon peut référencer un article archivé
-  const itemNames = Object.fromEntries(stock.map(s => [s.item_id, { name: s.item_name, archived: !!s.archived }]));
+  const itemNames = Object.fromEntries(stock.map(s => [s.item_id, { name: s.item_name, archived: !!s.archived, stock: s.stock_reel, stockPrevu: s.stock_prevu }]));
 
   const byOrder = {};
   lines.forEach(l => (byOrder[l.order_id] ||= []).push({
@@ -97,6 +97,8 @@ export async function loadAll() {
     type: o.type, status: o.status, partnerId: o.partner_id, partner: partnerName[o.partner_id] || "",
     date: o.confirmed_at || o.created_at, confirmedAt: o.confirmed_at,
     createdBy: who[o.created_by] || "Inconnu", lines: byOrder[o.id] || [], version: o.version,
+    cancelReason: o.cancel_reason || "", cancelledAt: o.cancelled_at || null,
+    cancelledBy: o.cancelled_by ? (who[o.cancelled_by] || "Inconnu") : "",
   }));
 
   return {

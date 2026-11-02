@@ -26,6 +26,10 @@ function unitFromTotal(total, qty) {
   return cents / 100;
 }
 function orderTotal(order) { return order.lines.reduce((sum, line) => sum + ceilTotal(line.quantity, line.unitPrice), 0); }
+// 02/11/26 : date compacte pour les tableaux sur téléphone
+function fmtDateShort(value) {
+  return new Date(value).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
 function itemFor(id) { return state.items.find(item => item.id === id); }
 // Nom affichable d'un article, même archivé (un ancien bon peut y faire référence)
 function itemLabel(id) {
@@ -68,6 +72,8 @@ document.addEventListener('click', e => {
     openAction(actionButton.dataset.action);
     return;
   }
+  const textSize = e.target.closest('[data-text-size]');
+  if (textSize) { applyTextSize(textSize.dataset.textSize); return; }
   const stockMode = e.target.closest('[data-stock-value]');
   if (stockMode) { stockValueMode = stockMode.dataset.stockValue; renderDashboard(); return; }
   const chartTab = e.target.closest('.chart-tab');
@@ -126,8 +132,8 @@ function renderDashboard() {
   const recent = historyEntries().filter(e => withFlows || e.kind === 'order')
     .sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0,5);
   document.getElementById('recentRows').innerHTML = recent.map(e => e.kind === 'flow'
-    ? `<tr><td><div class="reference-cell"><span class="item-symbol">⇄</span><span><span class="cell-title">FLUX</span><span class="cell-sub">${escapeHtml(e.flow.label)}</span></span></div></td><td><span class="cell-sub">—</span></td><td class="mobile-hide">${fmtDate(e.date)}</td><td class="desktop-only">${statusBadge('flux')}</td><td class="align-right"><strong class="${e.inflow ? 'positive' : 'negative'}">${e.inflow ? '+' : '−'} ${sCurrency(e.total)}</strong></td></tr>`
-    : `<tr><td><div class="reference-cell"><span class="item-symbol">${e.type==='achat'?'↓':'↑'}</span><span><span class="cell-title">${escapeHtml(e.ref)}</span><span class="cell-sub">${e.order.lines.length} ligne(s)</span></span></div></td><td>${partnerName(e.partner)}</td><td class="mobile-hide">${fmtDate(e.date)}</td><td class="desktop-only">${statusBadge(e.status)}</td><td class="align-right"><strong>${sCurrency(e.total)}</strong></td></tr>`).join('');
+    ? `<tr><td><div class="reference-cell"><span class="item-symbol">⇄</span><span><span class="cell-title">FLUX</span><span class="cell-sub">${escapeHtml(e.flow.label)}</span></span></div></td><td><span class="cell-sub">—</span></td><td><span class="desktop-only">${fmtDate(e.date)}</span><span class="mobile-only mobile-small-date">${fmtDateShort(e.date)}</span></td><td>${statusBadge('flux')}</td><td class="align-right"><strong class="${e.inflow ? 'positive' : 'negative'}">${e.inflow ? '+' : '−'} ${sCurrency(e.total)}</strong></td></tr>`
+    : `<tr><td><div class="reference-cell"><span class="item-symbol">${e.type==='achat'?'↓':'↑'}</span><span><span class="cell-title">${escapeHtml(e.ref)}</span><span class="cell-sub mobile-hide">${e.order.lines.length} ligne(s)</span></span></div></td><td>${partnerName(e.partner)}</td><td><span class="desktop-only">${fmtDate(e.date)}</span><span class="mobile-only mobile-small-date">${fmtDateShort(e.date)}</span></td><td>${statusBadge(e.status)}</td><td class="align-right"><strong>${sCurrency(e.total)}</strong></td></tr>`).join('');
   renderCashflowChart();
 }
 let currentChartRange = 7;
@@ -212,7 +218,7 @@ function renderStock() {
 function renderOperations() {
   const filter = document.getElementById('operationFilter')?.value || 'all';
   const rows = [...state.orders].filter(o => filter === 'all' || o.status === filter).sort((a,b)=>new Date(b.date)-new Date(a.date));
-  document.getElementById('operationRows').innerHTML = rows.map(o => `<tr><td><span class="cell-title">${escapeHtml(o.ref)}</span></td><td>${typeChip(o.type)}</td><td>${partnerName(o.partner)}</td><td class="mobile-hide">${fmtDate(o.date)}</td><td class="mobile-show-compressed">${statusBadge(o.status)}</td><td class="align-right"><strong>${sCurrency(orderTotal(o))}</strong></td><td><button class="row-action" data-order="${o.id}">Détails</button></td></tr>`).join('') || `<tr><td colspan="7"><div class="empty-state">Aucune opération.</div></td></tr>`;
+  document.getElementById('operationRows').innerHTML = rows.map(o => `<tr><td><span class="cell-title">${escapeHtml(o.ref)}</span></td><td>${typeChip(o.type)}</td><td>${partnerName(o.partner)}</td><td class="mobile-hide">${fmtDate(o.date)}</td><td class="mobile-show-compressed">${statusBadge(o.status)}</td><td class="align-right"><strong>${sCurrency(orderTotal(o))}</strong></td><td><button class="row-action" data-order="${o.id}" aria-label="Détails du bon ${escapeHtml(o.ref)}"><span class="desktop-only">Détails</span><span class="mobile-only">›</span></button></td></tr>`).join('') || `<tr><td colspan="7"><div class="empty-state">Aucune opération.</div></td></tr>`;
 }
 function renderPartners() {
   const query = (document.getElementById('partnerSearch')?.value || '').toLowerCase();
@@ -303,7 +309,8 @@ function resetHistoryFilters(render = true) {
   if (render) renderHistory();
 }
 function orderDetailHtml(o) {
-  return `<div class="detail-content"><table class="detail-table"><thead><tr>
+  const why = o.status === 'annule' ? `<p class="page-footnote">Annulé${o.cancelledBy ? ` par ${escapeHtml(o.cancelledBy)}` : ''}${o.cancelledAt ? ` le ${fmtDate(o.cancelledAt)}` : ''} · motif : ${escapeHtml(o.cancelReason || 'non renseigné')}</p>` : '';
+  return `<div class="detail-content">${why}<table class="detail-table"><thead><tr>
       <th style="width: 40%">ARTICLE</th><th class="align-right" style="width: 15%">QTÉ</th>
       <th class="align-right mobile-hide" style="width: 20%">PRIX UNIT.</th><th class="align-right" style="width: 25%">TOTAL</th>
     </tr></thead><tbody>${o.lines.map(l => `<tr>
@@ -329,11 +336,11 @@ function historyRowHtml(e) {
     : `<strong>${sCurrency(e.total)}</strong>`;
   return `
     <tr class="history-row${open ? ' expanded' : ''}" data-id="${e.id}">
-      <td><div style="display:flex;align-items:center;gap:8px"><button class="expand-btn" aria-expanded="${open}">${open ? '－' : '＋'}</button><span class="cell-title">${isFlow ? 'FLUX' : escapeHtml(e.ref)}</span></div></td>
+      <td><div class="ref-cell"><button class="expand-btn" aria-expanded="${open}">${open ? '－' : '＋'}</button><span class="cell-title">${isFlow ? 'FLUX' : escapeHtml(e.ref)}</span></div></td>
       <td>${typeChip(e.type)}</td>
       <td>${isFlow ? '<span class="cell-sub">—</span>' : partnerName(e.partner)}</td>
       <td class="desktop-only">${escapeHtml(e.createdBy)}</td>
-      <td class="mobile-small-date">${fmtDate(e.date)}</td>
+      <td class="mobile-small-date"><span class="desktop-only">${fmtDate(e.date)}</span><span class="mobile-only">${fmtDateShort(e.date)}</span></td>
       <td>${statusBadge(isFlow ? 'flux' : e.status)}</td>
       <td class="align-right">${total}</td>
     </tr>
@@ -424,11 +431,19 @@ function partnerOptions(type) {
   const candidates = state.partners.filter(p => type==='achat' ? p.supplier : p.client);
   return `<option value="">Partenaire non renseigné</option>${candidates.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}`;
 }
-function lineMarkup(type, itemId = null) {
+const itemOptionsHtml = (pool, selectedId) => pool.map(x => `<option value="${x.id}"${x.id === selectedId ? ' selected' : ''}>${escapeHtml(x.name)} · ${x.stock} en stock</option>`).join('');
+const itemsOfCategory = cat => cat === 'all' ? state.items : state.items.filter(x => x.category === cat);
+function lineMarkup(type, itemId = null, category = null) {
   const priceField = type === 'achat' ? 'buy' : 'sale';
-  const selected = state.items.find(x => x.id === itemId) || state.items[0];   // article demandé, sinon le premier
+  const wanted = state.items.find(x => x.id === itemId);
+  const cat = category ?? wanted?.category ?? 'all';                    // catégorie de l'article demandé, sinon « toutes »
+  const pool = itemsOfCategory(cat);
+  const selected = pool.find(x => x.id === itemId) || pool[0];
   const price = selected?.[priceField] ?? 0;
-  return `<div class="order-line"><select class="line-item" aria-label="Article">${state.items.map(x=>`<option value="${x.id}"${x.id === selected?.id ? ' selected' : ''}>${escapeHtml(x.name)} · ${x.stock} en stock</option>`).join('')}</select>`
+  const cats = [...new Set(state.items.map(x => x.category))].sort((a, b) => a.localeCompare(b, 'fr'));
+  return `<div class="order-line"><div class="line-item-cell">`
+    + `<select class="line-cat" aria-label="Catégorie"><option value="all">Toutes les catégories</option>${cats.map(c => `<option value="${escapeHtml(c)}"${c === cat ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select>`
+    + `<select class="line-item" aria-label="Article">${itemOptionsHtml(pool, selected?.id)}</select></div>`
     + `<label class="line-cell"><small class="line-cap">QTÉ</small><input class="line-qty" type="number" min="1" step="1" value="1" aria-label="Quantité"></label>`
     + `<label class="line-cell"><small class="line-cap">PRIX UNIT.</small><input class="line-price" type="number" min="0" step="0.01" value="${price}" aria-label="Prix unitaire"></label>`
     + `<label class="line-cell"><small class="line-cap">TOTAL</small><input class="line-total" type="number" min="0" step="any" value="${ceilTotal(1, price)}" aria-label="Total de la ligne"></label>`
@@ -446,7 +461,7 @@ function openOrderForm(type, itemId = null) {
       <p class="page-footnote">${isBuy?'Le bon sera confirmé immédiatement, la trésorerie diminuée et les quantités ajoutées au stock.':'La vente sera enregistrée en prévision. Le stock et la trésorerie ne bougeront qu’à la confirmation.'}</p>
       <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelOrder">Annuler</button><button class="btn btn-primary" type="submit">${isBuy?'Confirmer l’achat':'Créer la prévision'}</button></div>
     </form>`);
-  document.getElementById('addLine').addEventListener('click',()=>{ document.getElementById('lineList').insertAdjacentHTML('beforeend',lineMarkup(type)); bindLineEvents(); updateOrderTotal(); });
+  document.getElementById('addLine').addEventListener('click',()=>{ const lastCat=[...document.querySelectorAll('.line-cat')].pop()?.value||'all'; document.getElementById('lineList').insertAdjacentHTML('beforeend',lineMarkup(type,null,lastCat)); bindLineEvents(); updateOrderTotal(); });
   document.getElementById('cancelOrder').addEventListener('click',closeModal);
   bindLineEvents(); updateOrderTotal();
   document.getElementById('orderForm').addEventListener('submit', e=>{e.preventDefault(); submitOrder(type);});
@@ -455,10 +470,17 @@ function bindLineEvents() {
   document.querySelectorAll('.order-line').forEach(row => {
     const qty = row.querySelector('.line-qty'), price = row.querySelector('.line-price'), total = row.querySelector('.line-total');
     const totalFromPrice = () => { total.value = ceilTotal(qty.value, price.value); };
-    row.querySelector('.line-item').onchange = e => {
-      const item = itemFor(e.target.value);
+    const itemSel = row.querySelector('.line-item'), catSel = row.querySelector('.line-cat');
+    const loadItemPrice = () => {
+      const item = itemFor(itemSel.value);
       price.value = item ? (document.getElementById('orderType').value === 'achat' ? item.buy : item.sale) : 0;
       totalFromPrice(); updateOrderTotal();
+    };
+    itemSel.onchange = loadItemPrice;
+    catSel.onchange = () => {                                            // ne propose que les articles de la catégorie
+      const pool = itemsOfCategory(catSel.value), current = itemSel.value, keep = pool.some(x => x.id === current);
+      itemSel.innerHTML = itemOptionsHtml(pool, keep ? current : pool[0]?.id);
+      if (!keep) loadItemPrice();                                        // article remplacé : prix et total suivent
     };
     qty.oninput = () => { totalFromPrice(); updateOrderTotal(); };      // quantité modifiée : le prix unitaire est conservé
     price.oninput = () => { totalFromPrice(); updateOrderTotal(); };    // prix modifié : total = prix × quantité actuelle
@@ -512,7 +534,7 @@ function openItemForm(item = null) {
           <label>IMAGE DE L'ARTICLE</label>
           <div style="display:flex;gap:12px;align-items:center">
             <div class="img-field-preview" id="itemImgPreview">${isEdit && item.image ? `<img src="${escapeHtml(item.image)}">` : '<span>?</span>'}</div>
-            <input id="itemImageFile" type="file" accept="image/*" style="font-size:11px;color:#6e767e">
+            <input id="itemImageFile" type="file" accept="image/*" style="font-size:calc(11px * var(--fs));color:#6e767e">
           </div>
         </div>
         <div class="field full">
@@ -595,11 +617,11 @@ function openPartnerForm(partner = null) {
         <label>IMAGE DU PARTENAIRE</label>
         <div style="display:flex;gap:12px;align-items:center">
           <div class="img-field-preview" id="partnerImgPreview">${isEdit && partner.image ? `<img src="${escapeHtml(partner.image)}">` : '<span>?</span>'}</div>
-          <input id="partnerImageFile" type="file" accept="image/*" style="font-size:11px;color:#6e767e">
+          <input id="partnerImageFile" type="file" accept="image/*" style="font-size:calc(11px * var(--fs));color:#6e767e">
         </div>
       </div>
       <div class="field full"><label for="partnerNote">NOTE</label><input id="partnerNote" maxlength="180" placeholder="Contact, pseudo en jeu, remarque..." value="${isEdit ? escapeHtml(partner.note) : ''}"></div>
-      <div class="field"><label>TYPE DE PARTENAIRE</label><div style="display:flex;gap:16px;flex-wrap:wrap;color:#cbd2d2;font-size:11px"><label><input id="partnerSupplier" type="checkbox" ${isEdit && partner.supplier ? 'checked' : ''}> Fournisseur</label><label><input id="partnerClient" type="checkbox" ${isEdit && partner.client ? 'checked' : ''}> Client</label></div></div>
+      <div class="field"><label>TYPE DE PARTENAIRE</label><div style="display:flex;gap:16px;flex-wrap:wrap;color:#cbd2d2;font-size:calc(11px * var(--fs))"><label><input id="partnerSupplier" type="checkbox" ${isEdit && partner.supplier ? 'checked' : ''}> Fournisseur</label><label><input id="partnerClient" type="checkbox" ${isEdit && partner.client ? 'checked' : ''}> Client</label></div></div>
       <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelPartner">Annuler</button><button class="btn btn-primary" type="submit">${isEdit ? 'Enregistrer les modifications' : 'Ajouter le partenaire'}</button></div>
     </form>`);
   document.getElementById('cancelPartner').onclick=closeModal;
@@ -719,11 +741,67 @@ function openOrderDetails(id) {
   const lines=order.lines.map(l=>{return `<tr><td>${escapeHtml(itemLabel(l.itemId))}</td><td>${l.quantity}</td><td>${sCurrency(l.unitPrice)}</td><td class="align-right">${sCurrency(Math.ceil(l.quantity*l.unitPrice))}</td></tr>`;}).join('');
   let buttons='';
   if(order.type==='vente'&&order.status==='prevision'&&api.can('vente.manage')) buttons=`<button class="btn btn-primary" id="confirmSale">Confirmer la livraison</button><button class="btn btn-secondary" id="cancelSale">Annuler le bon</button>`;
-  openModal(`Bon ${order.ref}`,'DÉTAIL DE L’OPÉRATION',`<div class="detail-list"><div class="detail-box"><small>TYPE</small><strong>${order.type==='achat'?'Achat':'Vente'}</strong></div><div class="detail-box"><small>STATUT</small>${statusBadge(order.status)}</div><div class="detail-box"><small>PARTENAIRE</small><strong>${partnerName(order.partner)}</strong></div><div class="detail-box"><small>DATE</small><strong>${fmtDate(order.date)}</strong></div></div><div class="table-scroll"><table style="min-width:420px"><thead><tr><th>ARTICLE</th><th>QTÉ</th><th>PRIX UNIT.</th><th class="align-right">TOTAL</th></tr></thead><tbody>${lines}</tbody></table></div><div class="order-total"><span>TOTAL DU BON</span><strong>${sCurrency(orderTotal(order))}</strong></div><p class="page-footnote">Créé par ${escapeHtml(order.createdBy)} · Version ${order.version}</p><div class="modal-actions"><button class="btn btn-secondary" id="closeDetails">Fermer</button><button class="btn btn-secondary" id="openInHistory">Voir dans l’historique ↗</button>${buttons}</div>`);
+  if(order.status==='confirme'&&api.can('order.cancel')) buttons=`<button class="btn btn-danger" id="cancelConfirmed">Annuler le bon…</button>`;
+  const cancelInfo=order.status==='annule'?`<div class="detail-box" style="margin:14px 0"><small>ANNULÉ${order.cancelledBy?` PAR ${escapeHtml(order.cancelledBy.toUpperCase())}`:''}${order.cancelledAt?` · ${fmtDate(order.cancelledAt)}`:''}</small><strong>${order.cancelReason?escapeHtml(order.cancelReason):'Aucun motif renseigné'}</strong></div>`:'';
+  openModal(`Bon ${order.ref}`,'DÉTAIL DE L’OPÉRATION',`<div class="detail-list"><div class="detail-box"><small>TYPE</small><strong>${order.type==='achat'?'Achat':'Vente'}</strong></div><div class="detail-box"><small>STATUT</small>${statusBadge(order.status)}</div><div class="detail-box"><small>PARTENAIRE</small><strong>${partnerName(order.partner)}</strong></div><div class="detail-box"><small>DATE</small><strong>${fmtDate(order.date)}</strong></div></div><div class="table-scroll"><table><thead><tr><th>ARTICLE</th><th>QTÉ</th><th>PRIX UNIT.</th><th class="align-right">TOTAL</th></tr></thead><tbody>${lines}</tbody></table></div><div class="order-total"><span>TOTAL DU BON</span><strong>${sCurrency(orderTotal(order))}</strong></div>${cancelInfo}<p class="page-footnote">Créé par ${escapeHtml(order.createdBy)} · Version ${order.version}</p><div class="modal-actions"><button class="btn btn-secondary" id="closeDetails">Fermer</button><button class="btn btn-secondary" id="openInHistory">Voir dans l’historique ↗</button>${buttons}</div>`);
   document.getElementById('closeDetails').onclick=closeModal;
   document.getElementById('openInHistory').onclick=()=>goToHistory(order.id);
   document.getElementById('confirmSale')?.addEventListener('click',()=>confirmSale(order.id));
   document.getElementById('cancelSale')?.addEventListener('click',()=>cancelSale(order.id));
+  document.getElementById('cancelConfirmed')?.addEventListener('click',()=>openCancelForm(order.id));
+}
+function stockOf(itemId) {
+  const live = itemFor(itemId);
+  if (live) return { real: live.stock, planned: live.stockPrevu ?? live.stock };
+  const old = state.itemNames?.[itemId];                                   // article archivé
+  return old && old.stock != null ? { real: old.stock, planned: old.stockPrevu ?? old.stock } : null;
+}
+// Effet de l'annulation d'un bon CONFIRMÉ sur le stock : annuler un achat retire les unités, annuler une vente les remet
+function cancelImpact(order) {
+  const sign = order.type === 'achat' ? -1 : 1, qtyByItem = new Map();
+  order.lines.forEach(l => qtyByItem.set(l.itemId, (qtyByItem.get(l.itemId) || 0) + l.quantity));
+  return [...qtyByItem].map(([itemId, qty]) => {
+    const st = stockOf(itemId);
+    return { itemId, delta: sign * qty, before: st ? st.real : null, after: st ? st.real + sign * qty : null,
+             plannedAfter: st ? st.planned + sign * qty : null };
+  });
+}
+function openCancelForm(id) {
+  const order = state.orders.find(o => o.id === id);
+  if (!order || order.status !== 'confirme' || !api.can('order.cancel')) return;
+  const impact = cancelImpact(order);
+  const negative = impact.filter(r => r.after !== null && r.after < 0);
+  const plannedShort = impact.filter(r => r.plannedAfter !== null && r.plannedAfter < 0 && !(r.after !== null && r.after < 0));
+  const total = orderTotal(order), isBuy = order.type === 'achat';
+  const names = rows => rows.map(r => `${escapeHtml(itemLabel(r.itemId))} (${intFmt.format(r.after ?? r.plannedAfter)})`).join(', ');
+  const rows = impact.map(r => `<tr><td>${escapeHtml(itemLabel(r.itemId))}</td>
+      <td class="align-right ${r.delta < 0 ? 'negative' : 'positive'}">${r.delta < 0 ? '−' : '+'}${intFmt.format(Math.abs(r.delta))}</td>
+      <td class="align-right">${r.before === null ? '—' : intFmt.format(r.before)}</td>
+      <td class="align-right ${r.after !== null && r.after < 0 ? 'negative' : ''}"><strong>${r.after === null ? '—' : intFmt.format(r.after)}</strong></td></tr>`).join('');
+  openModal(`Annuler le bon ${order.ref}`, 'ANNULATION D’UN BON CONFIRMÉ', `
+    <form id="cancelOrderForm">
+      <p class="subheading" style="margin-top:0">${isBuy ? 'Achat' : 'Vente'} de ${sCurrency(total)} · ${partnerName(order.partner)} · ${fmtDate(order.date)}</p>
+      <div class="table-scroll"><table><thead><tr><th>ARTICLE</th><th class="align-right">STOCK</th><th class="align-right">AVANT</th><th class="align-right">APRÈS</th></tr></thead><tbody>${rows}</tbody></table></div>
+      ${negative.length ? `<div class="alert-warning" role="alert"><strong>⚠ Stock négatif</strong><span>Cette annulation fait passer en stock négatif : ${names(negative)}. Des unités déjà sorties ne seront plus couvertes.</span></div>` : ''}
+      ${plannedShort.length ? `<div class="alert-warning soft" role="status"><strong>Stock prévu insuffisant</strong><span>Après annulation, les ventes en prévision ne pourront plus toutes être honorées : ${names(plannedShort.map(r => ({ ...r, after: null })))}.</span></div>` : ''}
+      ${impact.some(r => r.before === null) ? `<p class="page-footnote">Stock actuel inconnu pour certains articles (droit de lecture du stock manquant) : impact non vérifiable.</p>` : ''}
+      <p class="page-footnote">Trésorerie : ${isBuy ? '+' : '−'} ${sCurrency(total)}. Les impôts de la semaine concernée sont recalculés ; l’annulation est refusée si cette semaine est déjà clôturée.</p>
+      <div class="field full"><label for="cancelReason">MOTIF (OBLIGATOIRE)</label><textarea id="cancelReason" rows="3" maxlength="300" required placeholder="Ex. : erreur de saisie, doublon…"></textarea></div>
+      <div class="modal-actions"><button type="button" class="btn btn-secondary" id="cancelBack">Retour</button><button class="btn btn-danger" type="submit" id="cancelSubmit">Annuler définitivement ce bon</button></div>
+    </form>`);
+  document.getElementById('cancelBack').onclick = () => openOrderDetails(order.id);
+  document.getElementById('cancelOrderForm').onsubmit = async e => {
+    e.preventDefault();
+    const reason = document.getElementById('cancelReason').value.trim();
+    if (!reason) return toast('Un motif est obligatoire pour annuler un bon confirmé.', true);
+    if (negative.length && !confirm(`Attention : ${negative.map(r => itemLabel(r.itemId)).join(', ')} passera en stock négatif. Annuler quand même le bon ${order.ref} ?`)) return;
+    const btn = document.getElementById('cancelSubmit'); btn.disabled = true;
+    try {
+      await api.cancelOrder(order.id, order.version, reason);
+      await refresh(); closeModal();
+      toast(`Bon ${order.ref} annulé : trésorerie et stock mis à jour.`);
+    } catch (err) { btn.disabled = false; toast(err.message || 'Erreur serveur', true); }
+  };
 }
 async function confirmSale(id) {
   const o=state.orders.find(x=>x.id===id); if(!o||o.status!=='prevision') return;
@@ -882,6 +960,30 @@ document.querySelector('#page-history thead')?.addEventListener('click', e => {
   renderHistory();
 });
 document.getElementById('homeIncludeFlows')?.addEventListener('change',renderDashboard);
+// ---------------------------------------------------------------- Taille du texte
+const TEXT_SIZES = [['s', 'Petit'], ['m', 'Normal'], ['l', 'Grand'], ['xl', 'Très grand']];
+const currentTextSize = () => document.documentElement.dataset.text || 'm';
+function applyTextSize(key) {
+  const k = TEXT_SIZES.some(([x]) => x === key) ? key : 'm';
+  document.documentElement.dataset.text = k;
+  try { localStorage.setItem('textSize', k); } catch (e) { /* stockage indisponible : choix non mémorisé */ }
+  document.querySelectorAll('[data-text-size]').forEach(b => {
+    const on = b.dataset.textSize === k; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on));
+  });
+}
+function openTextSizeMenu() {
+  const cur = currentTextSize();
+  openModal('Taille du texte', 'AFFICHAGE', `
+    <div class="seg-toggle seg-wide" role="group" aria-label="Taille du texte">${TEXT_SIZES.map(([k, l]) =>
+      `<button type="button" data-text-size="${k}" class="${k === cur ? 'active' : ''}" aria-pressed="${k === cur}">${l}</button>`).join('')}</div>
+    <div class="text-preview"><p>Aperçu : le stock, les ventes et la trésorerie s’affichent à cette taille.</p>
+      <div class="table-scroll"><table><thead><tr><th>ARTICLE</th><th class="align-right">QTÉ</th><th class="align-right">TOTAL</th></tr></thead>
+      <tbody><tr><td>Lingot d’or</td><td class="align-right">12</td><td class="align-right">1 200 s</td></tr></tbody></table></div></div>
+    <p class="page-footnote">Les tableaux grossissent moins que le reste du texte pour tenir à l’écran sans défilement. Le choix est mémorisé sur cet appareil.</p>
+    <div class="modal-actions"><button type="button" class="btn btn-primary" id="textSizeDone">Terminer</button></div>`);
+  document.getElementById('textSizeDone').onclick = closeModal;
+}
+document.getElementById('textSizeBtn')?.addEventListener('click', openTextSizeMenu);
 document.getElementById('helpBtn').addEventListener('click',()=>toast('Données synchronisées avec Supabase.'));
 function updateDashboardDate() {
   const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' };

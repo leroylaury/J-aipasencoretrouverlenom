@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#171b1f">
   <meta name="description" content="Company Manager — prototype de gestion des stocks et des opérations commerciales.">
   <title>Company Manager</title>
+  <script>try{var t=localStorage.getItem('textSize');if(t)document.documentElement.dataset.text=t}catch(e){}</script>
   <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
@@ -33,6 +34,7 @@
         <button class="mobile-brand" data-page="dashboard"><span class="brand-mark">CM</span><strong>COMPANY MANAGER</strong></button>
         <div class="breadcrumb"><span>ESPACE COMPAGNIE</span><b>/</b><strong id="crumbLabel">VUE GÉNÉRALE</strong></div>
         <div class="top-actions">
+          <button class="icon-btn" id="textSizeBtn" title="Taille du texte" aria-label="Taille du texte">Aa</button>
           <button class="icon-btn" id="helpBtn" title="À propos">?</button>
           <div class="top-profile">
             <button type="button" class="avatar avatar-top is-guest" id="discord-login-top" aria-label="Se connecter avec Discord">Connexion</button>
@@ -77,18 +79,18 @@
             </article>
             <article class="panel quick-panel"><div class="panel-heading"><div><div class="eyebrow">ACCÈS RAPIDE</div><h2>Nouvelle opération</h2></div></div><button class="quick-action" data-action="new-buy"><span class="quick-symbol buy">↓</span><span><strong>Enregistrer un achat</strong><small>Entrée de marchandises</small></span><b>→</b></button><button class="quick-action" data-action="new-sale"><span class="quick-symbol sell">↑</span><span><strong>Créer une vente</strong><small>Nouvelle prévision client</small></span><b>→</b></button><button class="quick-action" data-page="stock"><span class="quick-symbol stock">▤</span><span><strong>Consulter le stock</strong><small>Catalogue et disponibilités</small></span><b>→</b></button><div class="quick-foot"><span class="pulse"></span> SYSTÈME OPÉRATIONNEL</div></article>
           </div>
-          <article class="panel table-panel"><div class="panel-heading"><div><div class="eyebrow">DERNIÈRES ACTIVITÉS</div><h2>Mouvements récents</h2></div><button class="text-btn" data-page="history">Tout l'historique ↗</button></div><div class="table-scroll"><table><thead><tr><th>OPÉRATION</th><th class="mobile-show-compressed"><span class="desktop-only">PARTENAIRE</span><span class="mobile-only" title="Partenaire">P.</span></th><th class="mobile-hide">DATE</th><th class="desktop-only">STATUT</th><th class="align-right">MONTANT</th></tr></thead><tbody id="recentRows"></tbody></table></div></article>
+          <article class="panel table-panel"><div class="panel-heading"><div><div class="eyebrow">DERNIÈRES ACTIVITÉS</div><h2>Mouvements récents</h2></div><button class="text-btn" data-page="history">Tout l'historique ↗</button></div><div class="table-scroll"><table><thead><tr><th>OPÉRATION</th><th class="mobile-show-compressed"><span class="desktop-only">PARTENAIRE</span><span class="mobile-only" title="Partenaire">P.</span></th><th>DATE</th><th><span class="desktop-only">STATUT</span><span class="mobile-only" title="Statut">S.</span></th><th class="align-right">MONTANT</th></tr></thead><tbody id="recentRows"></tbody></table></div></article>
         </section>
 
         <section class="page" id="page-stock">
-          <div class="page-heading"><div><div class="eyebrow">GESTION DES RESSOURCES</div><h1>Inventaire<span class="orange-dot">.</span></h1><p class="subheading">Consultez les quantités et les derniers prix connus.</p></div><div style="display:flex;gap:8px"><button class="btn btn-secondary" data-action="new-item">＋ Nouvel article</button><button class="btn btn-secondary" data-action="new-buy">＋ Achat</button><button class="btn btn-primary" data-action="new-sale">＋ Vente</button></div></div>
+          <div class="page-heading"><div><div class="eyebrow">GESTION DES RESSOURCES</div><h1>Inventaire<span class="orange-dot">.</span></h1><p class="subheading">Consultez les quantités et les derniers prix connus.</p></div><div class="heading-actions"><button class="btn btn-secondary" data-action="new-item">＋ Nouvel article</button><button class="btn btn-secondary" data-action="new-buy">＋ Achat</button><button class="btn btn-primary" data-action="new-sale">＋ Vente</button></div></div>
           <div class="stock-summary"><div><small>ARTICLES RÉFÉRENCÉS</small><strong id="itemCount">00</strong></div><div><small>STOCK RÉEL (UNITÉS)</small><strong id="stockUnitsSummary">0</strong></div><div><small>STOCK PRÉVU (UNITÉS)</small><strong id="stockPrevuSummary">0</strong></div><div><small>CATÉGORIES</small><strong id="categoryCount">00</strong></div></div>
           <div class="toolbar">
             <label class="search-box"><span>⌕</span><input id="stockSearch" type="search" placeholder="Rechercher un article..."></label>
             <select id="categoryFilter" aria-label="Filtrer par catégorie">
               <option value="all">Toutes les catégories</option>
             </select>
-            <button class="btn btn-secondary btn-sm" data-action="new-category" style="padding:4px 12px;font-size:11px">＋ Catégorie</button>
+            <button class="btn btn-secondary btn-sm" data-action="new-category" style="padding:4px 12px;font-size:calc(11px * var(--fs))">＋ Catégorie</button>
             <span class="toolbar-count" id="stockResultCount">0 ARTICLES</span>
           </div>
           <article class="panel table-panel"><div class="table-scroll"><table><thead><tr><th>ARTICLE</th><th class="mobile-hide">CATÉGORIE</th><th class="align-right">STOCK RÉEL</th><th class="align-right" title="Stock restant si tous les bons de vente en prévision sont confirmés">STOCK PRÉVU</th><th class="align-right desktop-only">DERNIER ACHAT</th><th class="align-right desktop-only">DERNIÈRE VENTE</th><th></th></tr></thead><tbody id="stockRows"></tbody></table></div></article>
@@ -96,9 +98,9 @@
         </section>
 
         <section class="page" id="page-operations">
-          <div class="page-heading"><div><div class="eyebrow">CYCLE COMMERCIAL</div><h1>Opérations<span class="orange-dot">.</span></h1><p class="subheading">Créez et suivez les bons de la compagnie.</p></div><div style="display:flex;gap:8px"><button class="btn btn-secondary" data-action="new-buy">＋ Nouvel achat</button><button class="btn btn-primary" data-action="new-sale">＋ Nouvelle vente</button></div></div>
+          <div class="page-heading"><div><div class="eyebrow">CYCLE COMMERCIAL</div><h1>Opérations<span class="orange-dot">.</span></h1><p class="subheading">Créez et suivez les bons de la compagnie.</p></div><div class="heading-actions"><button class="btn btn-secondary" data-action="new-buy">＋ Nouvel achat</button><button class="btn btn-primary" data-action="new-sale">＋ Nouvelle vente</button></div></div>
           <div class="operation-cards"><button class="operation-card" data-action="new-buy"><span class="op-icon buy">↓</span><span><small>APPROVISIONNEMENT</small><strong>Nouvel achat</strong><em>Confirmation immédiate · Entrée en stock</em></span><b>→</b></button><button class="operation-card" data-action="new-sale"><span class="op-icon sell">↑</span><span><small>COMMERCE</small><strong>Nouvelle vente</strong><em>Création d'une prévision client</em></span><b>→</b></button></div>
-          <article class="panel table-panel"><div class="panel-heading"><div><div class="eyebrow">SUIVI DES BONS</div><h2>Opérations récentes</h2></div><select id="operationFilter"><option value="all">Tous les statuts</option><option value="prevision">En prévision</option><option value="confirme">Confirmés</option><option value="annule">Annulés</option></select></div><div class="table-scroll"><table><thead><tr><th>RÉFÉRENCE</th><th class="desktop-only">TYPE</th><th class="mobile-show-compressed"><span class="desktop-only">PARTENAIRE</span><span class="mobile-only" title="Partenaire">P.</span></th><th class="mobile-hide">DATE</th><th class="desktop-only">STATUT</th><th class="align-right">TOTAL</th><th></th></tr></thead><tbody id="operationRows"></tbody></table></div></article>
+          <article class="panel table-panel"><div class="panel-heading"><div><div class="eyebrow">SUIVI DES BONS</div><h2>Opérations récentes</h2></div><select id="operationFilter"><option value="all">Tous les statuts</option><option value="prevision">En prévision</option><option value="confirme">Confirmés</option><option value="annule">Annulés</option></select></div><div class="table-scroll"><table><thead><tr><th>RÉFÉRENCE</th><th><span class="desktop-only">TYPE</span><span class="mobile-only" title="Type">T.</span></th><th class="mobile-show-compressed"><span class="desktop-only">PARTENAIRE</span><span class="mobile-only" title="Partenaire">P.</span></th><th class="mobile-hide">DATE</th><th><span class="desktop-only">STATUT</span><span class="mobile-only" title="Statut">S.</span></th><th class="align-right">TOTAL</th><th></th></tr></thead><tbody id="operationRows"></tbody></table></div></article>
         </section>
 
         <section class="page" id="page-partners">
@@ -136,7 +138,7 @@
           <div id="taxRoot"></div>
         </section>
       </div>
-      <footer class="footer"><span>COMPANY MANAGER</span><span>BUILD 1.0.0</span></footer>
+      <footer class="footer"><span>COMPANY MANAGER</span><span>BUILD 1.1.0</span></footer>
     </main>
   </div>
 
