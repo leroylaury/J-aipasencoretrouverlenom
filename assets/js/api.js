@@ -47,7 +47,7 @@ export async function loadPermissions() {
 // Charge uniquement ce que les droits de l'utilisateur permettent (sinon RLS renverrait du vide / une erreur 42501)
 export async function loadAll() {
   const when = (ok, f) => (ok ? f() : Promise.resolve([]));
-  const [cats, parts, stock, costs, orders, lines, profs, imgs, treasury, flows] = await Promise.all([
+  const [cats, parts, stock, costs, orders, lines, profs, imgs, treasury, flows, adjs] = await Promise.all([
     when(can("stock.read"), () => run(supabase.from("categories").select("*").order("sort_order").order("name"))),
     when(can("partners.read"), () => run(supabase.from("partners").select("*").order("name"))),
     when(can("stock.read"), () => rpc("stock_overview")),
@@ -65,6 +65,8 @@ export async function loadAll() {
       if (error) { console.warn("cash_flows indisponible :", error.message); return []; }
       return data;
     })),
+    // Corrections de stock (vol, perte, erreur…) : lecture réservée à history.read comme le reste de l'historique
+    when(can("history.read"), () => fetchAll(() => supabase.from("stock_adjustments").select("*").order("created_at"))),
   ]);
   const imgOf = Object.fromEntries(imgs.map(i => [i.id, i.image_path]));
 
@@ -108,6 +110,8 @@ export async function loadAll() {
     openingCash: num(treasury?.opening_cash) ?? 0,
     cashFlows: flows.map(f => ({ id: f.id, direction: f.direction, amount: num(f.amount) ?? 0, label: f.label,
                                  note: f.note || "", date: f.occurred_on, createdBy: who[f.created_by] || "Inconnu" })),
+    adjustments: adjs.map(x => ({ id: x.id, itemId: x.item_id, delta: x.delta, reason: x.reason || "",
+                                  createdBy: who[x.created_by] || "Inconnu", date: x.created_at })),
   };
 }
 
@@ -207,6 +211,13 @@ export async function deletePartner(id) {
 export const addCashFlow = f => rpc("add_cash_flow", { p_id: f.id, p_direction: f.direction, p_amount: f.amount,
   p_label: f.label, p_note: f.note || null, p_date: f.date || null });
 export const deleteCashFlow = id => rpc("delete_cash_flow", { p_id: id });
+
+// Correction du stock réel : une ligne (variation + motif) dans stock_adjustments, jamais modifiable ni supprimable.
+// La policy exige le droit stock.adjust ; l'id fourni par le client évite les doublons en cas de double envoi.
+export const adjustStock = async ({ id, itemId, delta, reason }) => {
+  const { error } = await supabase.from("stock_adjustments").insert({ id, item_id: itemId, delta, reason });
+  if (error) throw error;
+};
 export const setOpeningCash = amount => rpc("set_opening_cash", { p_amount: amount });
 
 // --- Impôts (RPC existantes, pas encore branchées sur l'UI)

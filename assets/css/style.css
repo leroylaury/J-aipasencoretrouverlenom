@@ -318,3 +318,14 @@ table, .table-scroll, .mobile-nav { --fs: var(--fs-table); }
   #recentRows .cell-sub { display: block; max-width: 84px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 @media (max-width: 720px) { #recentRows .cell-sub { max-width: 56px; } }
+
+/* Icône d'article dans les lignes de bon */
+.line-item-row { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.line-item-row select { flex: 1; min-width: 0; }
+.line-icon { width: 24px; height: 24px; flex: none; font-size: calc(9px * var(--fs)); }
+
+/* Corrections de stock dans l'historique */
+.type-chip.ajust { color: #b4a7e6; border-color: #4a4466; }
+.status.ajust { background: #2b2840; color: #b4a7e6; }
+.status-dot.ajust { background: #b4a7e6; }
+.mobile-type-indicator.ajust { background: #2b2840; color: #b4a7e6; }

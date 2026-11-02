@@ -10,7 +10,7 @@ const initials = name => name.split(/\s+/).map(x => x[0]).slice(0, 2).join('').t
 const fmtDate = value => new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(value));
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-const state = { openingCash: 0, cash: 0, items: [], categories: [], categoryRows: [], partners: [], orders: [], movements: [], cashFlows: [], itemNames: {} };
+const state = { openingCash: 0, cash: 0, items: [], categories: [], categoryRows: [], partners: [], orders: [], movements: [], cashFlows: [], adjustments: [], itemNames: {} };
 
 // Total d'une ligne = arrondi supérieur de quantité × prix unitaire (calcul en centimes entiers, comme le serveur)
 function ceilTotal(qty, price) {
@@ -86,12 +86,12 @@ document.addEventListener('click', e => {
 });
 
 function statusBadge(status) {
-  const labels = { confirme:'Confirmé', prevision:'En prévision', annule:'Annulé', flux:'Hors impôts' };
+  const labels = { confirme:'Confirmé', prevision:'En prévision', annule:'Annulé', flux:'Hors impôts', ajust:'Correction' };
   return `<span class="status ${status}"><span class="desktop-only">${labels[status]}</span><span class="mobile-only status-dot ${status}" title="${labels[status]}"></span></span>`;
 }
 function typeChip(type) {
-  const label = { achat: 'ACHAT', vente: 'VENTE', flux: 'FLUX' }[type] || 'VENTE';
-  const letter = { achat: 'A', vente: 'V', flux: 'F' }[type] || 'V';
+  const label = { achat: 'ACHAT', vente: 'VENTE', flux: 'FLUX', ajust: 'STOCK' }[type] || 'VENTE';
+  const letter = { achat: 'A', vente: 'V', flux: 'F', ajust: 'S' }[type] || 'V';
   return `<span class="type-chip ${type} desktop-only">${label}</span><span class="mobile-type-indicator ${type}" title="${label}">${letter}</span>`;
 }
 function partnerName(name) {
@@ -129,7 +129,7 @@ function renderDashboard() {
   document.getElementById('movementFoot').textContent = withFlows ? 'Achats, ventes & flux' : 'Achats & ventes';
   document.getElementById('navStockCount').textContent = String(state.items.length).padStart(2,'0');
 
-  const recent = historyEntries().filter(e => withFlows || e.kind === 'order')
+  const recent = historyEntries().filter(e => e.kind !== 'adjust' && (withFlows || e.kind === 'order'))
     .sort((a,b) => new Date(b.date) - new Date(a.date)).slice(0,5);
   document.getElementById('recentRows').innerHTML = recent.map(e => e.kind === 'flow'
     ? `<tr><td><div class="reference-cell"><span class="item-symbol">⇄</span><span><span class="cell-title">FLUX</span><span class="cell-sub">${escapeHtml(e.flow.label)}</span></span></div></td><td><span class="cell-sub">—</span></td><td><span class="desktop-only">${fmtDate(e.date)}</span><span class="mobile-only mobile-small-date">${fmtDateShort(e.date)}</span></td><td>${statusBadge('flux')}</td><td class="align-right"><strong class="${e.inflow ? 'positive' : 'negative'}">${e.inflow ? '+' : '−'} ${sCurrency(e.total)}</strong></td></tr>`
@@ -239,7 +239,7 @@ function renderPartners() {
 const historyState = { sort: { key: 'date', dir: 'desc' }, expanded: new Set() };
 const NO_PARTNER = '__none__';
 const STATUS_LABELS = { confirme: 'Confirmé', prevision: 'En prévision', annule: 'Annulé' };
-const TYPE_LABELS = { achat: 'Achat', vente: 'Vente', flux: 'Flux hors impôts' };
+const TYPE_LABELS = { achat: 'Achat', vente: 'Vente', flux: 'Flux hors impôts', ajust: 'Ajustement de stock' };
 // Recherche insensible à la casse, aux accents et aux espaces insécables
 const norm = v => String(v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s\u00a0\u202f]+/g, ' ').toLowerCase();
 const dayKey = value => new Date(value).toLocaleDateString('sv-SE');     // AAAA-MM-JJ, heure locale
@@ -256,11 +256,16 @@ function historyEntries() {
     createdBy: f.createdBy, date: `${f.date}T12:00:00`, total: f.amount, inflow: f.direction === 'entree', flow: f,
     extra: `${f.label} ${f.note} ${f.direction === 'entree' ? 'entrée' : 'sortie'} hors impôts`,
   }));
-  return [...orders, ...flows];
+  const adjusts = (state.adjustments || []).map(a => ({
+    kind: 'adjust', id: a.id, ref: 'AJUST.', type: 'ajust', status: 'confirme', partner: '',
+    createdBy: a.createdBy, date: a.date, total: Math.abs(a.delta), adjust: a,
+    extra: `${itemLabel(a.itemId)} ${a.reason} ${a.delta > 0 ? 'ajout entrée' : 'retrait sortie'} correction ajustement stock`,
+  }));
+  return [...orders, ...flows, ...adjusts];
 }
 function historyHaystack(e) {
   return norm([
-    e.ref, TYPE_LABELS[e.type], e.kind === 'order' ? STATUS_LABELS[e.status] : 'hors impôts',
+    e.ref, TYPE_LABELS[e.type], e.kind === 'order' ? STATUS_LABELS[e.status] : (e.kind === 'adjust' ? 'correction' : 'hors impôts'),
     e.kind === 'order' ? (e.partner || 'Partenaire non renseigné') : '',
     e.createdBy, fmtDate(e.date), dayKey(e.date), e.total, sCurrency(e.total), e.extra,
   ].join(' '));
@@ -287,7 +292,7 @@ function filteredHistory(entries) {
 }
 const SORT_VALUE = {
   ref: e => e.ref, type: e => TYPE_LABELS[e.type], partner: e => e.partner, createdBy: e => e.createdBy,
-  date: e => new Date(e.date).getTime(), status: e => e.kind === 'flow' ? 'zz' : STATUS_LABELS[e.status], total: e => e.total,
+  date: e => new Date(e.date).getTime(), status: e => e.kind !== 'order' ? 'zz' : STATUS_LABELS[e.status], total: e => e.total,
 };
 function sortHistory(rows) {
   const { key, dir } = historyState.sort, get = SORT_VALUE[key] || SORT_VALUE.date, m = dir === 'asc' ? 1 : -1;
@@ -329,23 +334,32 @@ function flowDetailHtml(e) {
       <div class="detail-box"><small>NOTE</small><strong>${escapeHtml(f.note || '—')}</strong></div>
     </div><p class="page-footnote">Mouvement de trésorerie uniquement : aucun effet sur le calcul des impôts.</p></div>`;
 }
+function adjustDetailHtml(e) {
+  const a = e.adjust, item = itemFor(a.itemId) || null;
+  return `<div class="detail-content"><div class="detail-list">
+      <div class="detail-box"><small>ARTICLE</small><strong style="display:flex;align-items:center;gap:8px">${itemIconHtml(item)}${escapeHtml(itemLabel(a.itemId))}</strong></div>
+      <div class="detail-box"><small>VARIATION DU STOCK</small><strong class="${a.delta > 0 ? 'positive' : 'negative'}">${a.delta > 0 ? '+' : '−'}${intFmt.format(Math.abs(a.delta))} unité(s)</strong></div>
+      <div class="detail-box" style="grid-column:1/-1"><small>MOTIF</small><strong>${escapeHtml(a.reason)}</strong></div>
+    </div><p class="page-footnote">Correction de stock enregistrée par ${escapeHtml(a.createdBy)} · aucun effet sur la trésorerie ni sur les impôts.</p></div>`;
+}
 function historyRowHtml(e) {
-  const open = historyState.expanded.has(e.id), isFlow = e.kind === 'flow';
-  const total = isFlow
-    ? `<strong class="${e.inflow ? 'positive' : 'negative'}">${e.inflow ? '+' : '−'} ${sCurrency(e.total)}</strong>`
-    : `<strong>${sCurrency(e.total)}</strong>`;
+  const open = historyState.expanded.has(e.id), isOrder = e.kind === 'order', isFlow = e.kind === 'flow';
+  const total = isOrder ? `<strong>${sCurrency(e.total)}</strong>`
+    : isFlow ? `<strong class="${e.inflow ? 'positive' : 'negative'}">${e.inflow ? '+' : '−'} ${sCurrency(e.total)}</strong>`
+    : `<strong class="${e.adjust.delta > 0 ? 'positive' : 'negative'}">${e.adjust.delta > 0 ? '+' : '−'}${intFmt.format(Math.abs(e.adjust.delta))} u.</strong>`;
+  const detail = isOrder ? orderDetailHtml(e.order) : isFlow ? flowDetailHtml(e) : adjustDetailHtml(e);
   return `
     <tr class="history-row${open ? ' expanded' : ''}" data-id="${e.id}">
-      <td><div class="ref-cell"><button class="expand-btn" aria-expanded="${open}">${open ? '－' : '＋'}</button><span class="cell-title">${isFlow ? 'FLUX' : escapeHtml(e.ref)}</span></div></td>
+      <td><div class="ref-cell"><button class="expand-btn" aria-expanded="${open}">${open ? '－' : '＋'}</button><span class="cell-title">${e.kind === 'adjust' ? '<span class="desktop-only">AJUST.</span><span class="mobile-only">AJ.</span>' : escapeHtml(e.ref)}</span></div></td>
       <td>${typeChip(e.type)}</td>
-      <td>${isFlow ? '<span class="cell-sub">—</span>' : partnerName(e.partner)}</td>
+      <td>${isOrder ? partnerName(e.partner) : '<span class="cell-sub">—</span>'}</td>
       <td class="desktop-only">${escapeHtml(e.createdBy)}</td>
       <td class="mobile-small-date"><span class="desktop-only">${fmtDate(e.date)}</span><span class="mobile-only">${fmtDateShort(e.date)}</span></td>
-      <td>${statusBadge(isFlow ? 'flux' : e.status)}</td>
+      <td>${statusBadge(isOrder ? e.status : isFlow ? 'flux' : 'ajust')}</td>
       <td class="align-right">${total}</td>
     </tr>
     <tr class="detail-row" id="detail-${e.id}" style="display:${open ? 'table-row' : 'none'}">
-      <td colspan="7">${isFlow ? flowDetailHtml(e) : orderDetailHtml(e.order)}</td>
+      <td colspan="7">${detail}</td>
     </tr>`;
 }
 function renderHistory() {
@@ -431,6 +445,7 @@ function partnerOptions(type) {
   const candidates = state.partners.filter(p => type==='achat' ? p.supplier : p.client);
   return `<option value="">Partenaire non renseigné</option>${candidates.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}`;
 }
+const itemIconHtml = item => `<span class="item-symbol line-icon" aria-hidden="true">${item?.image ? `<img src="${escapeHtml(item.image)}" alt="">` : escapeHtml(item?.glyph || '?')}</span>`;
 const itemOptionsHtml = (pool, selectedId) => pool.map(x => `<option value="${x.id}"${x.id === selectedId ? ' selected' : ''}>${escapeHtml(x.name)} · ${x.stock} en stock</option>`).join('');
 const itemsOfCategory = cat => cat === 'all' ? state.items : state.items.filter(x => x.category === cat);
 function lineMarkup(type, itemId = null, category = null) {
@@ -443,7 +458,7 @@ function lineMarkup(type, itemId = null, category = null) {
   const cats = [...new Set(state.items.map(x => x.category))].sort((a, b) => a.localeCompare(b, 'fr'));
   return `<div class="order-line"><div class="line-item-cell">`
     + `<select class="line-cat" aria-label="Catégorie"><option value="all">Toutes les catégories</option>${cats.map(c => `<option value="${escapeHtml(c)}"${c === cat ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select>`
-    + `<select class="line-item" aria-label="Article">${itemOptionsHtml(pool, selected?.id)}</select></div>`
+    + `<div class="line-item-row">${itemIconHtml(selected)}<select class="line-item" aria-label="Article">${itemOptionsHtml(pool, selected?.id)}</select></div></div>`
     + `<label class="line-cell"><small class="line-cap">QTÉ</small><input class="line-qty" type="number" min="1" step="1" value="1" aria-label="Quantité"></label>`
     + `<label class="line-cell"><small class="line-cap">PRIX UNIT.</small><input class="line-price" type="number" min="0" step="0.01" value="${price}" aria-label="Prix unitaire"></label>`
     + `<label class="line-cell"><small class="line-cap">TOTAL</small><input class="line-total" type="number" min="0" step="any" value="${ceilTotal(1, price)}" aria-label="Total de la ligne"></label>`
@@ -473,6 +488,7 @@ function bindLineEvents() {
     const itemSel = row.querySelector('.line-item'), catSel = row.querySelector('.line-cat');
     const loadItemPrice = () => {
       const item = itemFor(itemSel.value);
+      row.querySelector('.line-icon').outerHTML = itemIconHtml(item);     // l'icône suit l'article choisi
       price.value = item ? (document.getElementById('orderType').value === 'achat' ? item.buy : item.sale) : 0;
       totalFromPrice(); updateOrderTotal();
     };
@@ -850,6 +866,62 @@ async function deleteFlow(id) {
   try { await api.deleteCashFlow(id); await refresh(); toast('Flux supprimé.'); }
   catch (err) { toast(err.message || 'Erreur serveur', true); }
 }
+const ADJUST_REASONS = ['Erreur de saisie', 'Vol', 'Perte', 'Casse / dégradation', 'Inventaire (comptage)', 'Autre'];
+function openStockAdjustForm(item) {
+  const base = item.stock, planned = item.stockPrevu ?? item.stock, adjId = uid();   // un seul id par ouverture : pas de doublon
+  openModal('Ajuster le stock', `${item.name.toUpperCase()} · CORRECTION`, `
+    <form id="adjustForm">
+      <div class="detail-box" style="display:flex;align-items:center;gap:10px">${itemIconHtml(item)}<span><small>STOCK RÉEL ACTUEL</small><strong>${intFmt.format(base)} unités</strong></span></div>
+      <div class="form-grid" style="margin-top:14px">
+        <div class="field"><label for="adjNew">NOUVEAU STOCK</label><input id="adjNew" type="number" min="0" step="1" value="${base}" required></div>
+        <div class="field"><label for="adjDelta">VARIATION (+ / −)</label><input id="adjDelta" type="number" step="1" value="0"></div>
+        <div class="field full"><label for="adjReason">MOTIF</label><select id="adjReason">${ADJUST_REASONS.map(r => `<option>${r}</option>`).join('')}</select></div>
+        <div class="field full"><label for="adjNote">PRÉCISION <span id="adjNoteReq" style="color:var(--muted)">(FACULTATIF)</span></label><input id="adjNote" maxlength="160" placeholder="Ex. : 3 lingots disparus lors du transport"></div>
+      </div>
+      <p class="subheading" id="adjPreview" style="margin:6px 0 0"></p>
+      <div id="adjWarn"></div>
+      <p class="page-footnote">Une correction n’a aucun effet sur la trésorerie ni sur les impôts. Elle est enregistrée dans l’historique avec son motif et ne peut pas être supprimée : en cas d’erreur, enregistrez la correction inverse.</p>
+      <div class="modal-actions"><button type="button" class="btn btn-secondary" id="adjCancel">Annuler</button><button class="btn btn-primary" type="submit" id="adjSubmit">Enregistrer la correction</button></div>
+    </form>`);
+  const $ = id => document.getElementById(id);
+  const signed = n => `${n > 0 ? '+' : n < 0 ? '−' : '±'}${intFmt.format(Math.abs(n))}`;
+  const update = () => {
+    const d = Number($('adjDelta').value) || 0;
+    $('adjPreview').textContent = d ? `Stock réel : ${intFmt.format(base)} → ${intFmt.format(base + d)} (${signed(d)}) · Stock prévu : ${intFmt.format(planned)} → ${intFmt.format(planned + d)}` : 'Aucune variation pour le moment.';
+    $('adjWarn').innerHTML = planned + d < 0
+      ? `<div class="alert-warning soft" role="status"><strong>Stock prévu négatif</strong><span>Après cette correction, les ventes en prévision ne pourront plus toutes être honorées.</span></div>` : '';
+    $('adjNoteReq').textContent = $('adjReason').value === 'Autre' ? '(OBLIGATOIRE)' : '(FACULTATIF)';
+  };
+  $('adjNew').oninput = () => { $('adjDelta').value = Number($('adjNew').value) - base; update(); };       // nouveau stock → variation
+  $('adjDelta').oninput = () => { $('adjNew').value = base + (Number($('adjDelta').value) || 0); update(); }; // variation → nouveau stock
+  $('adjReason').onchange = update;
+  $('adjCancel').onclick = closeModal;
+  update();
+  $('adjustForm').onsubmit = async e => {
+    e.preventDefault();
+    const delta = Number($('adjDelta').value), motif = $('adjReason').value, note = $('adjNote').value.trim();
+    if (!Number.isInteger(delta) || delta === 0) return toast('Indiquez une variation de stock différente de 0.', true);
+    if (base + delta < 0) return toast('Le stock réel ne peut pas être ramené sous 0 par une correction.', true);
+    if (motif === 'Autre' && !note) return toast('Précisez le motif quand vous choisissez « Autre ».', true);
+    const btn = $('adjSubmit'); btn.disabled = true;
+    try {
+      await refresh();                                                   // le stock a-t-il bougé depuis l'ouverture ?
+      const fresh = itemFor(item.id);
+      if (!fresh || fresh.stock !== base) {
+        btn.disabled = false;
+        toast(`Le stock a changé entre-temps (${intFmt.format(base)} → ${intFmt.format(fresh?.stock ?? 0)}). Vérifiez puis recommencez.`, true);
+        if (fresh) openStockAdjustForm(fresh);
+        return;
+      }
+      await api.adjustStock({ id: adjId, itemId: item.id, delta, reason: note ? `${motif} — ${note}` : motif });
+      await refresh(); closeModal();
+      toast(`Stock de ${item.name} corrigé : ${intFmt.format(base)} → ${intFmt.format(base + delta)} (${motif}).`);
+    } catch (err) {
+      btn.disabled = false;
+      toast(err.code === '42501' || /row-level security/i.test(err.message || '') ? 'Droit insuffisant : la permission stock.adjust est requise.' : (err.message || 'Erreur serveur'), true);
+    }
+  };
+}
 function openTreasuryForm() {
   openModal('Paramètres de trésorerie', 'FINANCES COMPAGNIE', `
     <form id="treasuryForm">
@@ -890,6 +962,7 @@ document.addEventListener('click',e=>{
       <div class="modal-actions-grid">
         <button class="btn btn-secondary" id="itemBuy">Enregistrer un achat</button>
         <button class="btn btn-primary" id="itemSell">Créer une vente</button>
+        ${api.can('stock.adjust') ? `<button class="btn btn-secondary" id="itemAdjust">Ajuster le stock…</button>` : ''}
         ${canManage ? `
           <button class="btn btn-ghost" id="itemEdit">Modifier l'article</button>
           <button class="btn btn-danger" id="itemDelete">Supprimer l'article</button>
@@ -897,6 +970,7 @@ document.addEventListener('click',e=>{
       </div>`);
     document.getElementById('itemBuy').onclick=()=>openOrderForm('achat', item.id);
     document.getElementById('itemSell').onclick=()=>openOrderForm('vente', item.id);
+    document.getElementById('itemAdjust')?.addEventListener('click',()=>openStockAdjustForm(item));
     if (canManage) {
       document.getElementById('itemEdit').onclick=()=>openItemForm(item);
       document.getElementById('itemDelete').onclick=async ()=>{
